@@ -6,7 +6,7 @@ Process internet data from various sources
 
 ### Ubuntu
 ```
-$ sudo apt-get install build-essential make golang pigz p7zip-full libmtbl
+$ sudo apt-get install build-essential make golang pigz p7zip-full libmtbl-dev
 ```
 
 ### Install
