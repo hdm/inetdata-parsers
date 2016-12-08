@@ -1,5 +1,8 @@
-
 #!/bin/bash
+
+echo "[*] Grabbing dependencies..."
+go get ./...
+
 bins=$(find cmd -maxdepth 1 -type d | grep / | cut -f 2 -d / | sort)
 for bin in ${bins}; do
   echo "[*] Building ${bin}..."
