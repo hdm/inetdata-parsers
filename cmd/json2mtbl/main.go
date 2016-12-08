@@ -56,8 +56,6 @@ func mergeFunc(key []byte, val0 []byte, val1 []byte) (mergedVal []byte) {
 	}
 
 	return d
-
-	return []byte(string(val0) + " " + string(val1))
 }
 
 func reverseKey(s string) string {
