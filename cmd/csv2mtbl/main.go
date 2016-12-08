@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-import "github.com/hdm/golang-mtbl"
+import "github.com/edmonds/golang-mtbl"
 
 var compression_types = map[string]int{
 	"none":   mtbl.COMPRESSION_NONE,
