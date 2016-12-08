@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 )
 
 var compression_types = map[string]int{
@@ -140,6 +141,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	start := time.Now()
+	records := 0
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		raw := strings.TrimSpace(scanner.Text())
@@ -153,6 +156,15 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Invalid line: %s\n", raw)
 			continue
 		}
+
+		if records > 0 && records%1000000 == 0 {
+			elapsed := time.Since(start)
+			if elapsed.Seconds() > 1.0 {
+				fmt.Fprintf(os.Stderr, "[*] Processed %d records in %d seconds (%d/s)\n", records, int(elapsed.Seconds()), int(float64(records)/elapsed.Seconds()))
+			}
+		}
+
+		records++
 
 		ip := bits[0]
 		name := bits[1]
