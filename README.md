@@ -11,7 +11,7 @@ $ sudo apt-get install build-essential make golang pigz p7zip-full libmtbl-dev
 
 ### Install
 ```
-$ sudo make install
+$ ./build.sh && sudo cp bin/* /usr/local/bin/
 ```
 
 
