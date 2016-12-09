@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"runtime"
+	"strings"
 )
 
 func reverseKey(s string) string {
@@ -67,6 +68,7 @@ func main() {
 	prefix := flag.String("p", "", "Only return keys with this prefix")
 	rev_prefix := flag.String("r", "", "Only return keys with this prefix in reverse form")
 	rev_key := flag.Bool("R", false, "Display matches with the key in reverse form")
+	zero_split := flag.Bool("z", false, "Split values into arrays using the null byte")
 
 	flag.Parse()
 
@@ -100,32 +102,29 @@ func main() {
 		}
 
 		var it *mtbl.Iter
-		var p string
 
 		if len(*prefix) > 0 {
-			p = *prefix
+			p := *prefix
 			it = mtbl.IterPrefix(r, []byte(p))
 		} else if len(*rev_prefix) > 0 {
-			p = reverseKey(*rev_prefix)
+			p := reverseKey(*rev_prefix)
 			it = mtbl.IterPrefix(r, []byte(p))
 		} else {
 			it = mtbl.IterAll(r)
 		}
 
-		valid := false
 		for {
-			key_bytes, val, ok := it.Next()
+			key_bytes, val_bytes, ok := it.Next()
 			if !ok {
 				break
 			}
 
-			// Bug: Destroying the iterator triggers a panic if it has no matches
-			if !valid {
-				valid = true
-				defer it.Destroy()
-			}
-
 			key := string(key_bytes)
+			val := []string{string(val_bytes)}
+
+			if *zero_split {
+				val = strings.SplitN(string(val_bytes), "\x00", -1)
+			}
 
 			if *rev_key {
 				key = reverseKey(key)
@@ -134,9 +133,9 @@ func main() {
 			if *key_only {
 				fmt.Printf("%s\n", key)
 			} else if *val_only {
-				fmt.Printf("%s\n", val)
+				fmt.Printf("%q\n", val)
 			} else {
-				fmt.Printf("%s\t%s\n", key, val)
+				fmt.Printf("%s\t%q\n", key, val)
 			}
 		}
 

@@ -19,15 +19,6 @@ var compression_types = map[string]int{
 	"lz4hc":  mtbl.COMPRESSION_LZ4HC,
 }
 
-func fail(args ...interface{}) {
-	fmt.Fprintln(os.Stderr, args...)
-	os.Exit(-1)
-}
-
-func warn(args ...interface{}) {
-	fmt.Fprintln(os.Stderr, args...)
-}
-
 func usage() {
 	fmt.Println("Usage: " + os.Args[0] + " [options]")
 	fmt.Println("")
@@ -117,8 +108,9 @@ func main() {
 	}
 
 	scanner := bufio.NewScanner(os.Stdin)
-	buf := make([]byte, 0, 1024*1024)
-	scanner.Buffer(buf, 1024*1024)
+	buf := make([]byte, 0, 1024*1024*8)
+	scanner.Buffer(buf, 1024*1024*8)
+
 	for scanner.Scan() {
 		raw := scanner.Bytes()
 		if len(raw) == 0 {

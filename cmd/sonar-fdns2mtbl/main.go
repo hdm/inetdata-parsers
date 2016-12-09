@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/edmonds/golang-mtbl"
@@ -20,19 +19,13 @@ var compression_types = map[string]int{
 	"lz4hc":  mtbl.COMPRESSION_LZ4HC,
 }
 
-func fail(args ...interface{}) {
-	fmt.Fprintln(os.Stderr, args...)
-	os.Exit(-1)
-}
-
-func warn(args ...interface{}) {
-	fmt.Fprintln(os.Stderr, args...)
-}
+var merge_count = 0
+var input_count = 0
 
 func usage() {
 	fmt.Println("Usage: " + os.Args[0] + " [options]")
 	fmt.Println("")
-	fmt.Println("Creates a MTBL database from a CSV input.")
+	fmt.Println("Creates two MTBL databases from a Sonar FDNS CSV input")
 	fmt.Println("")
 	fmt.Println("Options:")
 	flag.PrintDefaults()
@@ -40,35 +33,33 @@ func usage() {
 
 func mergeFunc(key []byte, val0 []byte, val1 []byte) (mergedVal []byte) {
 
-	var v0, v1 [][]string
+	merge_count++
 
-	if e := json.Unmarshal(val0, &v0); e != nil {
-		fmt.Fprintf(os.Stderr, "Unmarshal v0: %v -> %v\n", string(val0), e)
-		return val1
-	}
+	// Use null as our record separator
+	bits := strings.SplitN(string(val0), "\x00", -1)
 
-	if e := json.Unmarshal(val1, &v1); e != nil {
-		fmt.Fprintf(os.Stderr, "Unmarshal v1: %v -> %v\n", string(val1), e)
+	// Limit merged records to 100 entries
+	if len(bits) > 1000 {
 		return val0
 	}
 
-	var m [][]string
-
-	for i := 0; i < len(v0); i++ {
-		m = append(m, v0[i])
+	// Use a map to deduplicate values
+	m := make(map[string]int)
+	for i := range bits {
+		m[bits[i]] = 1
 	}
 
-	for i := 0; i < len(v1); i++ {
-		m = append(m, v1[i])
+	// Merge in the new value
+	m[string(val1)] = 1
+
+	// Recreate our list of unique values
+	vals := make([]string, 0, len(m))
+	for i := range m {
+		vals = append(vals, i)
 	}
 
-	d, e := json.Marshal(m)
-	if e != nil {
-		fmt.Fprintf(os.Stderr, "JSON merge error: %v  key=%v -> %v + %v\n", e, key, val0, val1)
-		return val0
-	}
-
-	return d
+	// Rejoin with nulls
+	return []byte(strings.Join(vals, "\x00"))
 }
 
 func reverseKey(s string) string {
@@ -80,20 +71,34 @@ func reverseKey(s string) string {
 	return string(b)
 }
 
+func showProgress(quit chan int) {
+	start := time.Now()
+	for {
+		select {
+		case <-quit:
+			fmt.Fprintf(os.Stderr, "[*] Complete\n")
+			return
+		case <-time.After(time.Second * 1):
+			elapsed := time.Since(start)
+			if elapsed.Seconds() > 1.0 {
+				fmt.Fprintf(os.Stderr, "[*] Processed %d records in %d seconds (%d/s) (merged: %d)\n",
+					input_count,
+					int(elapsed.Seconds()),
+					int(float64(input_count)/elapsed.Seconds()),
+					merge_count)
+			}
+		}
+	}
+}
+
 func writeToMtbl(s *mtbl.Sorter, key string, rtype string, rvalue string) {
 	if len(key) == 0 {
 		return
 	}
 
-	value := [][]string{[]string{rtype, rvalue}}
-	value_json, e := json.Marshal(value)
-	if e != nil {
-		fmt.Fprintf(os.Stderr, "Failed to marshal: key=%v (%v,%v)\n", key, rtype, rvalue)
-		return
-	}
-
-	if e := s.Add([]byte(key), value_json); e != nil {
-		fmt.Fprintf(os.Stderr, "Failed to add key=%v (%v): %v\n", key, string(value_json), e)
+	val := rtype + "_" + rvalue
+	if e := s.Add([]byte(key), []byte(val)); e != nil {
+		fmt.Fprintf(os.Stderr, "[-] Failed to add key=%v (%v): %v\n", key, val, e)
 		return
 	}
 }
@@ -119,26 +124,27 @@ func main() {
 	out_ip := out_prefix + "-ip.mtbl"
 	out_name := out_prefix + "-name.mtbl"
 
-	sort_opt := mtbl.SorterOptions{Merge: mergeFunc, MaxMemory: 1000000000}
-	sort_opt.MaxMemory *= *sort_mem
+	sort_opt_ip := mtbl.SorterOptions{Merge: mergeFunc, MaxMemory: 1000000000}
+	sort_opt_ip.MaxMemory *= *sort_mem
+
+	sort_opt_name := mtbl.SorterOptions{Merge: mergeFunc, MaxMemory: 1000000000}
+	sort_opt_name.MaxMemory *= *sort_mem
+
 	if len(*sort_tmp) > 0 {
-		sort_opt.TempDir = *sort_tmp
+		sort_opt_ip.TempDir = (*sort_tmp)[:]
+		sort_opt_name.TempDir = (*sort_tmp)[:]
 	}
 
 	compression_alg, ok := compression_types[*compression]
 	if !ok {
-		fmt.Fprintf(os.Stderr, "Invalid compression algorithm: %s\n", *compression)
+		fmt.Fprintf(os.Stderr, "[-] Invalid compression algorithm: %s\n", *compression)
 		os.Exit(1)
 	}
 
-	// Output for FDNS:
-	//   1) <ip> -> [ ['dnstype', 'value'], ..]
-	//   2) <reverse-name> -> [ ['r-dnstype', 'value'], ..]
-
-	s_ip := mtbl.SorterInit(&sort_opt)
+	s_ip := mtbl.SorterInit(&sort_opt_ip)
 	defer s_ip.Destroy()
 
-	s_name := mtbl.SorterInit(&sort_opt)
+	s_name := mtbl.SorterInit(&sort_opt_name)
 	defer s_name.Destroy()
 
 	os.Remove(out_ip)
@@ -146,7 +152,7 @@ func main() {
 	defer w_ip.Destroy()
 
 	if w_ip_e != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", w_ip_e)
+		fmt.Fprintf(os.Stderr, "[-] Error: %s\n", w_ip_e)
 		os.Exit(1)
 	}
 
@@ -155,13 +161,17 @@ func main() {
 	defer w_name.Destroy()
 
 	if w_name_e != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", w_name_e)
+		fmt.Fprintf(os.Stderr, "[-] Error: %s\n", w_name_e)
 		os.Exit(1)
 	}
 
-	start := time.Now()
-	records := 0
+	quit := make(chan int)
+	go showProgress(quit)
+
 	scanner := bufio.NewScanner(os.Stdin)
+	buf := make([]byte, 0, 1024*1024*8)
+	scanner.Buffer(buf, 1024*1024*8)
+
 	for scanner.Scan() {
 		raw := strings.TrimSpace(scanner.Text())
 		if len(raw) == 0 {
@@ -171,24 +181,22 @@ func main() {
 		bits := strings.SplitN(raw, ",", 3)
 
 		if len(bits) < 3 {
-			fmt.Fprintf(os.Stderr, "Invalid line: %s\n", raw)
+			fmt.Fprintf(os.Stderr, "[-] Invalid line: %s\n", raw)
 			continue
 		}
 
-		if records > 0 && records%1000000 == 0 {
-			elapsed := time.Since(start)
-			if elapsed.Seconds() > 1.0 {
-				fmt.Fprintf(os.Stderr, "[*] Processed %d records in %d seconds (%d/s)\n", records, int(elapsed.Seconds()), int(float64(records)/elapsed.Seconds()))
-			}
-		}
-
-		records++
+		input_count++
 
 		name := bits[0]
 		dtype := bits[1]
 		dvalue := bits[2]
 		rname := reverseKey(name)
 		rvalue := reverseKey(dvalue)
+
+		if len(name) == 0 || len(dtype) == 0 || len(dvalue) == 0 {
+			fmt.Fprintf(os.Stderr, "[-] Invalid line: %s\n", raw)
+			continue
+		}
 
 		writeToMtbl(s_name, rname, dtype, dvalue)
 
@@ -211,13 +219,15 @@ func main() {
 	}
 
 	if e := s_ip.Write(w_ip); e != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", e)
+		fmt.Fprintf(os.Stderr, "[-] Error: %s\n", e)
 		os.Exit(1)
 	}
 
 	if e := s_name.Write(w_name); e != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", e)
+		fmt.Fprintf(os.Stderr, "[-] Error: %s\n", e)
 		os.Exit(1)
 	}
+
+	quit <- 0
 
 }
