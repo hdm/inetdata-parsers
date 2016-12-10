@@ -69,6 +69,7 @@ func main() {
 	rev_prefix := flag.String("r", "", "Only return keys with this prefix in reverse form")
 	rev_key := flag.Bool("R", false, "Display matches with the key in reverse form")
 	zero_split := flag.Bool("z", false, "Split values into arrays using the null byte")
+	no_quotes := flag.Bool("n", false, "Print raw values, not quoted values")
 
 	flag.Parse()
 
@@ -133,9 +134,17 @@ func main() {
 			if *key_only {
 				fmt.Printf("%s\n", key)
 			} else if *val_only {
-				fmt.Printf("%q\n", val)
+				if *no_quotes {
+					fmt.Printf("%s\n", val)
+				} else {
+					fmt.Printf("%q\n", val)
+				}
 			} else {
-				fmt.Printf("%s\t%q\n", key, val)
+				if *no_quotes {
+					fmt.Printf("%s\t%s\n", key, val)
+				} else {
+					fmt.Printf("%s\t%q\n", key, val)
+				}
 			}
 		}
 
