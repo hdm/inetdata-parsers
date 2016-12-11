@@ -117,6 +117,7 @@ func main() {
 			"-u",
 			"--key=1",
 			"--field-separator=,",
+			"--compress-program=pigz",
 			fmt.Sprintf("--parallel=%d", runtime.NumCPU()),
 			fmt.Sprintf("--temporary-directory=%s", *sort_tmp),
 			fmt.Sprintf("--buffer-size=%dG", *sort_mem))
@@ -170,6 +171,7 @@ func main() {
 			"-u",
 			"--key=1",
 			"--field-separator=,",
+			"--compress-program=pigz",
 			fmt.Sprintf("--parallel=%d", runtime.NumCPU()),
 			fmt.Sprintf("--temporary-directory=%s", *sort_tmp),
 			fmt.Sprintf("--buffer-size=%dG", *sort_mem))
