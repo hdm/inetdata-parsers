@@ -2,14 +2,23 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/edmonds/golang-mtbl"
 	"os"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
+
+const MERGE_MODE_COMBINE = 0
+const MERGE_MODE_FIRST = 1
+const MERGE_MODE_LAST = 2
+
+var merge_mode = MERGE_MODE_COMBINE
 
 var compression_types = map[string]int{
 	"none":   mtbl.COMPRESSION_NONE,
@@ -19,13 +28,20 @@ var compression_types = map[string]int{
 	"lz4hc":  mtbl.COMPRESSION_LZ4HC,
 }
 
-var merge_count = 0
-var input_count = 0
+var merge_count int64 = 0
+var input_count int64 = 0
+
+type NewRecord struct {
+	Key []byte
+	Val []byte
+}
+
+var wg sync.WaitGroup
 
 func usage() {
 	fmt.Println("Usage: " + os.Args[0] + " [options]")
 	fmt.Println("")
-	fmt.Println("Creates two MTBL databases from a Sonar FDNS CSV input")
+	fmt.Println("Creates a MTBL database from a Sonar FDNS pre-sorted and pre-merged CSV input")
 	fmt.Println("")
 	fmt.Println("Options:")
 	flag.PrintDefaults()
@@ -33,33 +49,55 @@ func usage() {
 
 func mergeFunc(key []byte, val0 []byte, val1 []byte) (mergedVal []byte) {
 
-	merge_count++
+	atomic.AddInt64(&merge_count, 1)
 
-	// Use null as our record separator
-	bits := strings.SplitN(string(val0), "\x00", -1)
-
-	// Limit merged records to 100 entries
-	if len(bits) > 1000 {
+	if merge_mode == MERGE_MODE_FIRST {
 		return val0
 	}
 
-	// Use a map to deduplicate values
-	m := make(map[string]int)
-	for i := range bits {
-		m[bits[i]] = 1
+	if merge_mode == MERGE_MODE_LAST {
+		return val1
 	}
 
-	// Merge in the new value
-	m[string(val1)] = 1
+	// MERGE_MODE_COMBINE
+	var unique = make(map[string]bool)
+	var v0, v1, m [][]string
 
-	// Recreate our list of unique values
-	vals := make([]string, 0, len(m))
-	for i := range m {
-		vals = append(vals, i)
+	// fmt.Fprintf(os.Stderr, "MERGE[%v]     %v    ->    %v\n", string(key), string(val0), string(val1))
+
+	if e := json.Unmarshal(val0, &v0); e != nil {
+		return val1
 	}
 
-	// Rejoin with nulls
-	return []byte(strings.Join(vals, "\x00"))
+	if e := json.Unmarshal(val1, &v1); e != nil {
+		return val0
+	}
+
+	for i := range v0 {
+		if len(v0[i]) == 0 {
+			continue
+		}
+		unique[strings.Join(v0[i], "\x00")] = true
+	}
+
+	for i := range v1 {
+		if len(v1[i]) == 0 {
+			continue
+		}
+		unique[strings.Join(v1[i], "\x00")] = true
+	}
+
+	for i := range unique {
+		m = append(m, strings.SplitN(i, "\x00", 2))
+	}
+
+	d, e := json.Marshal(m)
+	if e != nil {
+		fmt.Fprintf(os.Stderr, "JSON merge error: %v -> %v + %v\n", e, val0, val1)
+		return val0
+	}
+
+	return d
 }
 
 func reverseKey(s string) string {
@@ -73,12 +111,18 @@ func reverseKey(s string) string {
 
 func showProgress(quit chan int) {
 	start := time.Now()
+
 	for {
 		select {
 		case <-quit:
 			fmt.Fprintf(os.Stderr, "[*] Complete\n")
 			return
 		case <-time.After(time.Second * 1):
+			if input_count == 0 && merge_count == 0 {
+				// Reset start, so that we show stats only from our first input
+				start = time.Now()
+				continue
+			}
 			elapsed := time.Since(start)
 			if elapsed.Seconds() > 1.0 {
 				fmt.Fprintf(os.Stderr, "[*] Processed %d records in %d seconds (%d/s) (merged: %d)\n",
@@ -91,16 +135,14 @@ func showProgress(quit chan int) {
 	}
 }
 
-func writeToMtbl(s *mtbl.Sorter, key string, rtype string, rvalue string) {
-	if len(key) == 0 {
-		return
+func writeToMtbl(s *mtbl.Sorter, c chan NewRecord) {
+	for r := range c {
+		if e := s.Add(r.Key, r.Val); e != nil {
+			fmt.Fprintf(os.Stderr, "[-] Failed to add key=%v (%v): %v\n", r.Key, r.Val, e)
+		}
 	}
 
-	val := rtype + "_" + rvalue
-	if e := s.Add([]byte(key), []byte(val)); e != nil {
-		fmt.Fprintf(os.Stderr, "[-] Failed to add key=%v (%v): %v\n", key, val, e)
-		return
-	}
+	wg.Done()
 }
 
 func main() {
@@ -109,9 +151,10 @@ func main() {
 
 	flag.Usage = func() { usage() }
 
-	compression := flag.String("c", "lz4", "The compression type to use (none, snappy, zlib, lz4, lz4hc)")
+	compression := flag.String("c", "snappy", "The compression type to use (none, snappy, zlib, lz4, lz4hc)")
 	sort_tmp := flag.String("t", "", "The temporary directory to use for the sorting phase")
-	sort_mem := flag.Uint64("m", 1, "The maximum amount of memory to use, in gigabytes, for the sorting phase, per output file")
+	sort_mem := flag.Uint64("m", 1024, "The maximum amount of memory to use, in megabytes, for the sorting phase, per output file")
+	selected_merge_mode := flag.String("M", "combine", "The merge mode: combine, first, or last")
 
 	flag.Parse()
 
@@ -120,19 +163,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	out_prefix := flag.Args()[0]
-	out_ip := out_prefix + "-ip.mtbl"
-	out_name := out_prefix + "-name.mtbl"
+	switch *selected_merge_mode {
+	case "combine":
+		merge_mode = MERGE_MODE_COMBINE
+	case "first":
+		merge_mode = MERGE_MODE_FIRST
+	case "last":
+		merge_mode = MERGE_MODE_LAST
+	default:
+		fmt.Fprintf(os.Stderr, "Error: Invalid merge mode specified: %s\n", *selected_merge_mode)
+		usage()
+		os.Exit(1)
+	}
 
-	sort_opt_ip := mtbl.SorterOptions{Merge: mergeFunc, MaxMemory: 1000000000}
-	sort_opt_ip.MaxMemory *= *sort_mem
+	fname := flag.Args()[0]
+	_ = os.Remove(fname)
 
-	sort_opt_name := mtbl.SorterOptions{Merge: mergeFunc, MaxMemory: 1000000000}
-	sort_opt_name.MaxMemory *= *sort_mem
+	sort_opt := mtbl.SorterOptions{Merge: mergeFunc, MaxMemory: 1024 * 1024}
+	sort_opt.MaxMemory *= *sort_mem
 
 	if len(*sort_tmp) > 0 {
-		sort_opt_ip.TempDir = (*sort_tmp)[:]
-		sort_opt_name.TempDir = (*sort_tmp)[:]
+		sort_opt.TempDir = *sort_tmp
 	}
 
 	compression_alg, ok := compression_types[*compression]
@@ -141,36 +192,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	s_ip := mtbl.SorterInit(&sort_opt_ip)
-	defer s_ip.Destroy()
+	s := mtbl.SorterInit(&sort_opt)
+	w, w_e := mtbl.WriterInit(fname, &mtbl.WriterOptions{Compression: compression_alg})
 
-	s_name := mtbl.SorterInit(&sort_opt_name)
-	defer s_name.Destroy()
-
-	os.Remove(out_ip)
-	w_ip, w_ip_e := mtbl.WriterInit(out_ip, &mtbl.WriterOptions{Compression: compression_alg})
-	defer w_ip.Destroy()
-
-	if w_ip_e != nil {
-		fmt.Fprintf(os.Stderr, "[-] Error: %s\n", w_ip_e)
+	if w_e != nil {
+		fmt.Fprintf(os.Stderr, "[-] Error: %s\n", w_e)
 		os.Exit(1)
 	}
 
-	os.Remove(out_name)
-	w_name, w_name_e := mtbl.WriterInit(out_name, &mtbl.WriterOptions{Compression: compression_alg})
-	defer w_name.Destroy()
-
-	if w_name_e != nil {
-		fmt.Fprintf(os.Stderr, "[-] Error: %s\n", w_name_e)
-		os.Exit(1)
-	}
+	s_ch := make(chan NewRecord, 1000)
+	go writeToMtbl(s, s_ch)
+	wg.Add(1)
 
 	quit := make(chan int)
 	go showProgress(quit)
 
 	scanner := bufio.NewScanner(os.Stdin)
-	buf := make([]byte, 0, 1024*1024*8)
-	scanner.Buffer(buf, 1024*1024*8)
+	buf := make([]byte, 0, 1024*1024*512)
+	scanner.Buffer(buf, 1024*1024*512)
 
 	for scanner.Scan() {
 		raw := strings.TrimSpace(scanner.Text())
@@ -178,56 +217,62 @@ func main() {
 			continue
 		}
 
-		bits := strings.SplitN(raw, ",", 3)
+		bits := strings.SplitN(raw, ",", 2)
 
-		if len(bits) < 3 {
+		if len(bits) != 2 {
 			fmt.Fprintf(os.Stderr, "[-] Invalid line: %s\n", raw)
 			continue
 		}
 
-		input_count++
+		atomic.AddInt64(&input_count, 1)
 
 		name := bits[0]
-		dtype := bits[1]
-		dvalue := bits[2]
-		rname := reverseKey(name)
-		rvalue := reverseKey(dvalue)
+		data := bits[1]
 
-		if len(name) == 0 || len(dtype) == 0 || len(dvalue) == 0 {
+		if len(name) == 0 || len(data) == 0 {
 			fmt.Fprintf(os.Stderr, "[-] Invalid line: %s\n", raw)
 			continue
 		}
 
-		writeToMtbl(s_name, rname, dtype, dvalue)
+		outp := [][]string{}
 
-		switch dtype {
-		case "a", "aaaa":
-			writeToMtbl(s_ip, dvalue, dtype, name)
+		vals := strings.SplitN(data, "\x00", -1)
+		for i := range vals {
+			info := strings.SplitN(vals[i], ",", 2)
 
-		case "cname", "ns", "ptr":
-			writeToMtbl(s_name, rvalue, "r-"+dtype, name)
-
-		case "mx":
-			parts := strings.SplitN(dvalue, " ", 2)
-			if len(parts) != 2 {
-				continue
+			// This is a single-mapped value without a type prefix
+			// Types: a, aaaa
+			if len(info) == 1 {
+				outp = append(outp, []string{vals[i]})
+				// This is a pair-mapped value with a dns record type
+				// Types: fdns, cname, ns, mx, ptr
+			} else {
+				outp = append(outp, info)
+				// Reverse the name key for easy prefix searching
+				name = reverseKey(name)
 			}
-			dvalue = parts[1]
-			rvalue = reverseKey(parts[1])
-			writeToMtbl(s_name, rvalue, "r-"+dtype, name)
 		}
+
+		json, e := json.Marshal(outp)
+		if e != nil {
+			fmt.Fprintf(os.Stderr, "[-] Could not marshal %v: %s\n", outp, e)
+			continue
+		}
+
+		s_ch <- NewRecord{Key: []byte(name), Val: json}
 	}
 
-	if e := s_ip.Write(w_ip); e != nil {
-		fmt.Fprintf(os.Stderr, "[-] Error: %s\n", e)
-		os.Exit(1)
-	}
+	close(s_ch)
+	wg.Wait()
 
-	if e := s_name.Write(w_name); e != nil {
-		fmt.Fprintf(os.Stderr, "[-] Error: %s\n", e)
+	if e := s.Write(w); e != nil {
+		fmt.Fprintf(os.Stderr, "[-] Error writing IP file: %s\n", e)
 		os.Exit(1)
 	}
 
 	quit <- 0
+
+	s.Destroy()
+	w.Destroy()
 
 }

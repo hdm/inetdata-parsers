@@ -11,6 +11,12 @@ import (
 	"time"
 )
 
+const MERGE_MODE_COMBINE = 0
+const MERGE_MODE_FIRST = 1
+const MERGE_MODE_LAST = 2
+
+var merge_mode = MERGE_MODE_COMBINE
+
 var compression_types = map[string]int{
 	"none":   mtbl.COMPRESSION_NONE,
 	"snappy": mtbl.COMPRESSION_SNAPPY,
@@ -34,6 +40,16 @@ func usage() {
 func mergeFunc(key []byte, val0 []byte, val1 []byte) (mergedVal []byte) {
 
 	merge_count++
+
+	if merge_mode == MERGE_MODE_FIRST {
+		return val0
+	}
+
+	if merge_mode == MERGE_MODE_LAST {
+		return val1
+	}
+
+	// MERGE_MODE_COMBINE
 
 	// Use null as our record separator
 	bits := strings.SplitN(string(val0), "\x00", -1)
@@ -100,10 +116,24 @@ func main() {
 	compression := flag.String("c", "snappy", "The compression type to use (none, snappy, zlib, lz4, lz4hc)")
 	sort_tmp := flag.String("t", "", "The temporary directory to use for the sorting phase")
 	sort_mem := flag.Uint64("m", 1, "The maximum amount of memory to use, in gigabytes, for the sorting phase, per output file")
+	selected_merge_mode := flag.String("M", "combine", "The merge mode: combine, first, or last")
 
 	flag.Parse()
 
 	if len(flag.Args()) != 1 {
+		usage()
+		os.Exit(1)
+	}
+
+	switch *selected_merge_mode {
+	case "combine":
+		merge_mode = MERGE_MODE_COMBINE
+	case "first":
+		merge_mode = MERGE_MODE_FIRST
+	case "last":
+		merge_mode = MERGE_MODE_LAST
+	default:
+		fmt.Fprintf(os.Stderr, "Error: Invalid merge mode specified: %s\n", *selected_merge_mode)
 		usage()
 		os.Exit(1)
 	}
