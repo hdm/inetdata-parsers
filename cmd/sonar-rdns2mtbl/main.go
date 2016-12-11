@@ -110,6 +110,7 @@ func showProgress(quit chan int) {
 func main() {
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
+	os.Setenv("LC_ALL", "C")
 
 	flag.Usage = func() { usage() }
 

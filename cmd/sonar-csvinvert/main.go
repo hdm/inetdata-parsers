@@ -72,6 +72,7 @@ func outputWriter(fd io.WriteCloser, c chan string) {
 func main() {
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
+	os.Setenv("LC_ALL", "C")
 
 	flag.Usage = func() { usage() }
 	sort_tmp := flag.String("t", "", "The temporary directory to use for the sorting phase")

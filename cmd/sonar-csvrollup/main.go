@@ -95,6 +95,7 @@ func mergeAndEmit(c chan OutputKey, o chan string) {
 func main() {
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
+	os.Setenv("LC_ALL", "C")
 
 	flag.Usage = func() { usage() }
 	flag.Parse()

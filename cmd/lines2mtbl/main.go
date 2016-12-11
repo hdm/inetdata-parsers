@@ -77,6 +77,7 @@ func reverseKey(s string) string {
 func main() {
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
+	os.Setenv("LC_ALL", "C")
 
 	flag.Usage = func() { usage() }
 
