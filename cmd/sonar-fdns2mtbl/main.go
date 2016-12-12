@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/edmonds/golang-mtbl"
 	"os"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -17,6 +18,10 @@ import (
 const MERGE_MODE_COMBINE = 0
 const MERGE_MODE_FIRST = 1
 const MERGE_MODE_LAST = 2
+
+var match_ipv6 = regexp.MustCompile(`^((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|((:[0-9A-Fa-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|((:[0-9A-Fa-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|((:[0-9A-Fa-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|((:[0-9A-Fa-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|((:[0-9A-Fa-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))(%.+)?$`)
+
+var match_ipv4 = regexp.MustCompile(`^(?:(?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})[.](?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})[.](?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})[.](?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2}))$`)
 
 var merge_mode = MERGE_MODE_COMBINE
 
@@ -30,6 +35,7 @@ var compression_types = map[string]int{
 
 var merge_count int64 = 0
 var input_count int64 = 0
+var output_count int64 = 0
 
 type NewRecord struct {
 	Key []byte
@@ -125,23 +131,74 @@ func showProgress(quit chan int) {
 			}
 			elapsed := time.Since(start)
 			if elapsed.Seconds() > 1.0 {
-				fmt.Fprintf(os.Stderr, "[*] Processed %d records in %d seconds (%d/s) (merged: %d)\n",
+				fmt.Fprintf(os.Stderr, "[*] Read %d and wrote %d records in %d seconds (read: %d/s write: %d/s) (merged: %d)\n",
 					input_count,
+					output_count,
 					int(elapsed.Seconds()),
 					int(float64(input_count)/elapsed.Seconds()),
+					int(float64(output_count)/elapsed.Seconds()),
 					merge_count)
 			}
 		}
 	}
 }
 
-func writeToMtbl(s *mtbl.Sorter, c chan NewRecord) {
+func writeToMtbl(s *mtbl.Sorter, c chan NewRecord, d chan bool) {
 	for r := range c {
 		if e := s.Add(r.Key, r.Val); e != nil {
 			fmt.Fprintf(os.Stderr, "[-] Failed to add key=%v (%v): %v\n", r.Key, r.Val, e)
 		}
+		output_count++
 	}
+	d <- true
+}
 
+func inputParser(d chan *string, c chan NewRecord) {
+	for raw := range d {
+		bits := strings.SplitN(*raw, ",", 2)
+
+		if len(bits) != 2 {
+			fmt.Fprintf(os.Stderr, "[-] Invalid line: %s\n", *raw)
+			continue
+		}
+
+		name := bits[0]
+		data := bits[1]
+
+		if len(name) == 0 || len(data) == 0 {
+			fmt.Fprintf(os.Stderr, "[-] Invalid line: %s\n", *raw)
+			continue
+		}
+		vals := strings.SplitN(data, "\x00", -1)
+		outp := [][]string{}
+
+		for i := range vals {
+			info := strings.SplitN(vals[i], ",", 2)
+
+			if len(info) == 1 {
+				// This is a single-mapped value without a type prefix
+				// Types: a, aaaa
+				outp = append(outp, []string{vals[i]})
+			} else {
+				// This is a pair-mapped value with a dns record type
+				// Types: fdns, cname, ns, mx, ptr
+				outp = append(outp, info)
+			}
+		}
+
+		json, e := json.Marshal(outp)
+		if e != nil {
+			fmt.Fprintf(os.Stderr, "[-] Could not marshal %v: %s\n", outp, e)
+			continue
+		}
+
+		// Reverse the key unless its an IP address
+		if !(match_ipv4.Match([]byte(name)) || match_ipv6.Match([]byte(name))) {
+			name = reverseKey(name)
+		}
+
+		c <- NewRecord{Key: []byte(name), Val: json}
+	}
 	wg.Done()
 }
 
@@ -202,8 +259,15 @@ func main() {
 	}
 
 	s_ch := make(chan NewRecord, 1000)
-	go writeToMtbl(s, s_ch)
-	wg.Add(1)
+	s_done := make(chan bool, 1)
+
+	go writeToMtbl(s, s_ch, s_done)
+
+	p_ch := make(chan *string, 1000)
+	for i := 0; i < runtime.NumCPU(); i++ {
+		go inputParser(p_ch, s_ch)
+		wg.Add(1)
+	}
 
 	quit := make(chan int)
 	go showProgress(quit)
@@ -218,56 +282,24 @@ func main() {
 			continue
 		}
 
-		bits := strings.SplitN(raw, ",", 2)
-
-		if len(bits) != 2 {
-			fmt.Fprintf(os.Stderr, "[-] Invalid line: %s\n", raw)
-			continue
-		}
-
 		atomic.AddInt64(&input_count, 1)
 
-		name := bits[0]
-		data := bits[1]
-
-		if len(name) == 0 || len(data) == 0 {
-			fmt.Fprintf(os.Stderr, "[-] Invalid line: %s\n", raw)
-			continue
-		}
-
-		outp := [][]string{}
-
-		vals := strings.SplitN(data, "\x00", -1)
-		for i := range vals {
-			info := strings.SplitN(vals[i], ",", 2)
-
-			// This is a single-mapped value without a type prefix
-			// Types: a, aaaa
-			if len(info) == 1 {
-				outp = append(outp, []string{vals[i]})
-				// This is a pair-mapped value with a dns record type
-				// Types: fdns, cname, ns, mx, ptr
-			} else {
-				outp = append(outp, info)
-				// Reverse the name key for easy prefix searching
-				name = reverseKey(name)
-			}
-		}
-
-		json, e := json.Marshal(outp)
-		if e != nil {
-			fmt.Fprintf(os.Stderr, "[-] Could not marshal %v: %s\n", outp, e)
-			continue
-		}
-
-		s_ch <- NewRecord{Key: []byte(name), Val: json}
+		p_ch <- &raw
 	}
 
-	close(s_ch)
+	if scanner.Err() != nil {
+		fmt.Fprintf(os.Stderr, "Error reading lines: %s\n", scanner.Err())
+		os.Exit(1)
+	}
+
+	close(p_ch)
 	wg.Wait()
 
+	close(s_ch)
+	<-s_done
+
 	if e := s.Write(w); e != nil {
-		fmt.Fprintf(os.Stderr, "[-] Error writing IP file: %s\n", e)
+		fmt.Fprintf(os.Stderr, "[-] Error writing MTBL: %s\n", e)
 		os.Exit(1)
 	}
 
@@ -275,5 +307,4 @@ func main() {
 
 	s.Destroy()
 	w.Destroy()
-
 }
