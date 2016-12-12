@@ -46,7 +46,7 @@ type NewRecord struct {
 var wg sync.WaitGroup
 
 func usage() {
-	fmt.Println("Usage: " + os.Args[0] + " [options]")
+	fmt.Println("Usage: " + os.Args[0] + " [options] <output.mtbl>")
 	fmt.Println("")
 	fmt.Println("Creates a MTBL database from a Sonar FDNS pre-sorted and pre-merged CSV input")
 	fmt.Println("")
@@ -339,13 +339,12 @@ func main() {
 	quit := make(chan int)
 	go showProgress(quit)
 
-	// Reader closers c_inp on completion
+	// Reader closes input on completion
 	e := stdinReader(p_ch)
 	if e != nil {
 		fmt.Fprintf(os.Stderr, "Error reading input: %s\n", e)
 	}
 
-	close(p_ch)
 	wg.Wait()
 
 	close(s_ch)
