@@ -43,7 +43,10 @@ func showProgress(quit chan int) {
 			fmt.Fprintf(os.Stderr, "[*] Complete\n")
 			return
 		case <-time.After(time.Second * 1):
-			if input_count == 0 && output_count == 0 {
+			icount := atomic.LoadInt64(&input_count)
+			ocount := atomic.LoadInt64(&output_count)
+
+			if icount == 0 && ocount == 0 {
 				// Reset start, so that we show stats only from our first input
 				start = time.Now()
 				continue
@@ -51,11 +54,11 @@ func showProgress(quit chan int) {
 			elapsed := time.Since(start)
 			if elapsed.Seconds() > 1.0 {
 				fmt.Fprintf(os.Stderr, "[*] [sonar-csvinvert] Read %d and wrote %d records in %d seconds (%d/s in, %d/s out)\n",
-					input_count,
-					output_count,
+					icount,
+					ocount,
 					int(elapsed.Seconds()),
-					int(float64(input_count)/elapsed.Seconds()),
-					int(float64(output_count)/elapsed.Seconds()))
+					int(float64(icount)/elapsed.Seconds()),
+					int(float64(ocount)/elapsed.Seconds()))
 			}
 		}
 	}
@@ -65,6 +68,109 @@ func outputWriter(fd io.WriteCloser, c chan string) {
 	for r := range c {
 		fd.Write([]byte(r))
 		atomic.AddInt64(&output_count, 1)
+	}
+	wg.Done()
+}
+
+func stdinReader(out chan<- string) error {
+
+	var (
+		backbufferSize  = 200000
+		frontbufferSize = 50000
+		r               = bufio.NewReaderSize(os.Stdin, frontbufferSize)
+		buf             []byte
+		pred            []byte
+		err             error
+	)
+
+	if backbufferSize <= frontbufferSize {
+		backbufferSize = (frontbufferSize / 3) * 4
+	}
+
+	for {
+		buf, err = r.ReadSlice('\n')
+
+		if err == bufio.ErrBufferFull {
+			if len(buf) == 0 {
+				continue
+			}
+
+			if pred == nil {
+				pred = make([]byte, len(buf), backbufferSize)
+				copy(pred, buf)
+			} else {
+				pred = append(pred, buf...)
+			}
+			continue
+		} else if err == io.EOF && len(buf) == 0 && len(pred) == 0 {
+			break
+		}
+
+		if len(pred) > 0 {
+			buf, pred = append(pred, buf...), pred[:0]
+		}
+
+		if len(buf) > 0 && buf[len(buf)-1] == '\n' {
+			buf = buf[:len(buf)-1]
+		}
+
+		if len(buf) == 0 {
+			continue
+		}
+
+		// fmt.Fprintf(os.Stderr, "Line: %s\n", string(buf))
+		out <- string(buf)
+	}
+
+	close(out)
+
+	if err != nil && err != io.EOF {
+		return err
+	}
+
+	return nil
+}
+
+func inputParser(c chan string, c_ip4 chan string, c_ip6 chan string, c_names chan string) {
+
+	for r := range c {
+
+		raw := strings.TrimSpace(r)
+
+		if len(raw) == 0 {
+			continue
+		}
+
+		bits := strings.SplitN(raw, ",", 3)
+
+		if len(bits) != 3 || len(bits[0]) == 0 || len(bits[1]) == 0 || len(bits[2]) == 0 {
+			fmt.Fprintf(os.Stderr, "[-] Invalid line: %q -> %q\n", raw, bits)
+			continue
+		}
+
+		name := bits[0]
+		rtype := bits[1]
+		value := bits[2]
+
+		atomic.AddInt64(&input_count, 1)
+
+		switch rtype {
+		case "a":
+			c_ip4 <- fmt.Sprintf("%s,%s\n", value, name)
+
+		case "aaaa":
+			c_ip6 <- fmt.Sprintf("%s,%s\n", value, name)
+
+		case "cname", "ns", "ptr":
+			c_names <- fmt.Sprintf("%s,r-%s,%s\n", value, rtype, name)
+
+		case "mx":
+			parts := strings.SplitN(value, " ", 2)
+			if len(parts) != 2 || len(parts[1]) == 0 {
+				continue
+			}
+			c_names <- fmt.Sprintf("%s,r-%s,%s\n", parts[1], rtype, name)
+		}
 	}
 	wg.Done()
 }
@@ -227,49 +333,16 @@ func main() {
 	quit := make(chan int)
 	go showProgress(quit)
 
-	scanner := bufio.NewScanner(os.Stdin)
+	// Parse stdin
+	c_inp := make(chan string, 1000)
+	go inputParser(c_inp, c_ip4, c_ip6, c_names)
+	go inputParser(c_inp, c_ip4, c_ip6, c_names)
+	wg.Add(2)
 
-	// Support extremely long lines
-	buf := make([]byte, 0, 1024*1024*64)
-	scanner.Buffer(buf, 1024*1024*64)
-
-	// Parse the FDNS file to create inverse outputs
-	for scanner.Scan() {
-		raw := strings.TrimSpace(scanner.Text())
-		if len(raw) == 0 {
-			continue
-		}
-
-		bits := strings.SplitN(raw, ",", 3)
-
-		if len(bits) != 3 || len(bits[0]) == 0 || len(bits[1]) == 0 || len(bits[2]) == 0 {
-			fmt.Fprintf(os.Stderr, "[-] Invalid line: %s\n", raw)
-			continue
-		}
-
-		name := bits[0]
-		rtype := bits[1]
-		value := bits[2]
-
-		input_count++
-
-		switch rtype {
-		case "a":
-			c_ip4 <- fmt.Sprintf("%s,%s\n", value, name)
-
-		case "aaaa":
-			c_ip6 <- fmt.Sprintf("%s,%s\n", value, name)
-
-		case "cname", "ns", "ptr":
-			c_names <- fmt.Sprintf("%s,r-%s,%s\n", value, rtype, name)
-
-		case "mx":
-			parts := strings.SplitN(value, " ", 2)
-			if len(parts) != 2 || len(parts[1]) == 0 {
-				continue
-			}
-			c_names <- fmt.Sprintf("%s,r-%s,%s\n", parts[1], rtype, name)
-		}
+	// Reader closers c_inp on completion
+	e := stdinReader(c_inp)
+	if e != nil {
+		fmt.Fprintf(os.Stderr, "Error reading input: %s\n", e)
 	}
 
 	close(c_ip4)

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"strings"
@@ -41,7 +42,10 @@ func showProgress(quit chan int) {
 			fmt.Fprintf(os.Stderr, "[*] Complete\n")
 			return
 		case <-time.After(time.Second * 1):
-			if input_count == 0 && output_count == 0 {
+			icount := atomic.LoadInt64(&input_count)
+			ocount := atomic.LoadInt64(&output_count)
+
+			if icount == 0 && ocount == 0 {
 				// Reset start, so that we show stats only from our first input
 				start = time.Now()
 				continue
@@ -49,11 +53,11 @@ func showProgress(quit chan int) {
 			elapsed := time.Since(start)
 			if elapsed.Seconds() > 1.0 {
 				fmt.Fprintf(os.Stderr, "[*] [sonar-csvrollup] Read %d and wrote %d records in %d seconds (%d/s in, %d/s out)\n",
-					input_count,
-					output_count,
+					icount,
+					ocount,
 					int(elapsed.Seconds()),
-					int(float64(input_count)/elapsed.Seconds()),
-					int(float64(output_count)/elapsed.Seconds()))
+					int(float64(icount)/elapsed.Seconds()),
+					int(float64(ocount)/elapsed.Seconds()))
 			}
 		}
 	}
@@ -92,43 +96,74 @@ func mergeAndEmit(c chan OutputKey, o chan string) {
 	wg.Done()
 }
 
-func main() {
+func stdinReader(out chan<- string) error {
 
-	runtime.GOMAXPROCS(runtime.NumCPU())
-	os.Setenv("LC_ALL", "C")
+	var (
+		backbufferSize  = 200000
+		frontbufferSize = 50000
+		r               = bufio.NewReaderSize(os.Stdin, frontbufferSize)
+		buf             []byte
+		pred            []byte
+		err             error
+	)
 
-	flag.Usage = func() { usage() }
-	flag.Parse()
-
-	scanner := bufio.NewScanner(os.Stdin)
-
-	// Progress tracker
-	quit := make(chan int)
-	go showProgress(quit)
-
-	// Output merger and writer
-	outc := make(chan OutputKey, 1000)
-	outl := make(chan string, 1000)
-	outq := make(chan bool, 1)
-
-	for i := 0; i < runtime.NumCPU(); i++ {
-		go mergeAndEmit(outc, outl)
-		wg.Add(1)
+	if backbufferSize <= frontbufferSize {
+		backbufferSize = (frontbufferSize / 3) * 4
 	}
 
-	// Not covered by the waitgroup
-	go writeOutput(outl, outq)
+	for {
+		buf, err = r.ReadSlice('\n')
+
+		if err == bufio.ErrBufferFull {
+			if len(buf) == 0 {
+				continue
+			}
+
+			if pred == nil {
+				pred = make([]byte, len(buf), backbufferSize)
+				copy(pred, buf)
+			} else {
+				pred = append(pred, buf...)
+			}
+			continue
+		} else if err == io.EOF && len(buf) == 0 && len(pred) == 0 {
+			break
+		}
+
+		if len(pred) > 0 {
+			buf, pred = append(pred, buf...), pred[:0]
+		}
+
+		if len(buf) > 0 && buf[len(buf)-1] == '\n' {
+			buf = buf[:len(buf)-1]
+		}
+
+		if len(buf) == 0 {
+			continue
+		}
+
+		// fmt.Fprintf(os.Stderr, "Line: %s\n", string(buf))
+		out <- string(buf)
+	}
+
+	close(out)
+
+	if err != nil && err != io.EOF {
+		return err
+	}
+
+	return nil
+}
+
+func inputParser(c <-chan string, outc chan<- OutputKey) {
 
 	// Track current key and value array
 	ckey := ""
 	cval := []string{}
 
-	// Support extremely long lines
-	buf := make([]byte, 0, 1024*1024*64)
-	scanner.Buffer(buf, 1024*1024*64)
+	for r := range c {
 
-	for scanner.Scan() {
-		raw := strings.TrimSpace(scanner.Text())
+		raw := strings.TrimSpace(r)
 		if len(raw) == 0 {
 			continue
 		}
@@ -140,7 +175,7 @@ func main() {
 			continue
 		}
 
-		input_count++
+		atomic.AddInt64(&input_count, 1)
 
 		key := bits[0]
 		val := bits[1]
@@ -166,6 +201,47 @@ func main() {
 	}
 
 	close(outc)
+	wg.Done()
+}
+
+func main() {
+
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	os.Setenv("LC_ALL", "C")
+
+	flag.Usage = func() { usage() }
+	flag.Parse()
+
+	// Progress tracker
+	quit := make(chan int)
+	go showProgress(quit)
+
+	// Output merger and writer
+	outc := make(chan OutputKey, 1000)
+	outl := make(chan string, 1000)
+	outq := make(chan bool, 1)
+
+	for i := 0; i < runtime.NumCPU(); i++ {
+		go mergeAndEmit(outc, outl)
+		wg.Add(1)
+	}
+
+	// Not covered by the waitgroup
+	go writeOutput(outl, outq)
+
+	// Parse stdin
+	c_inp := make(chan string, 1000)
+
+	// Only one parser allowed given the rollup use case
+	go inputParser(c_inp, outc)
+	wg.Add(1)
+
+	// Reader closers c_inp on completion
+	e := stdinReader(c_inp)
+	if e != nil {
+		fmt.Fprintf(os.Stderr, "Error reading input: %s\n", e)
+	}
+
 	wg.Wait()
 
 	close(outl)

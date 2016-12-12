@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/edmonds/golang-mtbl"
+	"io"
 	"os"
 	"regexp"
 	"runtime"
@@ -51,6 +52,37 @@ func usage() {
 	fmt.Println("")
 	fmt.Println("Options:")
 	flag.PrintDefaults()
+}
+
+func showProgress(quit chan int) {
+	start := time.Now()
+	for {
+		select {
+		case <-quit:
+			fmt.Fprintf(os.Stderr, "[*] Complete\n")
+			return
+		case <-time.After(time.Second * 1):
+			icount := atomic.LoadInt64(&input_count)
+			ocount := atomic.LoadInt64(&output_count)
+			mcount := atomic.LoadInt64(&merge_count)
+
+			if icount == 0 && ocount == 0 {
+				// Reset start, so that we show stats only from our first input
+				start = time.Now()
+				continue
+			}
+			elapsed := time.Since(start)
+			if elapsed.Seconds() > 1.0 {
+				fmt.Fprintf(os.Stderr, "[*] [sonar-fdns2mtbl] Read %d and wrote %d records in %d seconds (%d/s in, %d/s out) (merged: %d)\n",
+					icount,
+					ocount,
+					int(elapsed.Seconds()),
+					int(float64(icount)/elapsed.Seconds()),
+					int(float64(ocount)/elapsed.Seconds()),
+					mcount)
+			}
+		}
+	}
 }
 
 func mergeFunc(key []byte, val0 []byte, val1 []byte) (mergedVal []byte) {
@@ -115,58 +147,34 @@ func reverseKey(s string) string {
 	return string(b)
 }
 
-func showProgress(quit chan int) {
-	start := time.Now()
-
-	for {
-		select {
-		case <-quit:
-			fmt.Fprintf(os.Stderr, "[*] Complete\n")
-			return
-		case <-time.After(time.Second * 1):
-			if input_count == 0 && merge_count == 0 {
-				// Reset start, so that we show stats only from our first input
-				start = time.Now()
-				continue
-			}
-			elapsed := time.Since(start)
-			if elapsed.Seconds() > 1.0 {
-				fmt.Fprintf(os.Stderr, "[*] Read %d and wrote %d records in %d seconds (read: %d/s write: %d/s) (merged: %d)\n",
-					input_count,
-					output_count,
-					int(elapsed.Seconds()),
-					int(float64(input_count)/elapsed.Seconds()),
-					int(float64(output_count)/elapsed.Seconds()),
-					merge_count)
-			}
-		}
-	}
-}
-
 func writeToMtbl(s *mtbl.Sorter, c chan NewRecord, d chan bool) {
 	for r := range c {
 		if e := s.Add(r.Key, r.Val); e != nil {
 			fmt.Fprintf(os.Stderr, "[-] Failed to add key=%v (%v): %v\n", r.Key, r.Val, e)
 		}
-		output_count++
+		atomic.AddInt64(&output_count, 1)
 	}
 	d <- true
 }
 
-func inputParser(d chan *string, c chan NewRecord) {
+func inputParser(d chan string, c chan NewRecord) {
+
 	for raw := range d {
-		bits := strings.SplitN(*raw, ",", 2)
+
+		bits := strings.SplitN(raw, ",", 2)
 
 		if len(bits) != 2 {
-			fmt.Fprintf(os.Stderr, "[-] Invalid line: %s\n", *raw)
+			fmt.Fprintf(os.Stderr, "[-] Invalid line: %s\n", raw)
 			continue
 		}
+
+		atomic.AddInt64(&input_count, 1)
 
 		name := bits[0]
 		data := bits[1]
 
 		if len(name) == 0 || len(data) == 0 {
-			fmt.Fprintf(os.Stderr, "[-] Invalid line: %s\n", *raw)
+			fmt.Fprintf(os.Stderr, "[-] Invalid line: %s\n", raw)
 			continue
 		}
 		vals := strings.SplitN(data, "\x00", -1)
@@ -200,6 +208,65 @@ func inputParser(d chan *string, c chan NewRecord) {
 		c <- NewRecord{Key: []byte(name), Val: json}
 	}
 	wg.Done()
+}
+
+func stdinReader(out chan<- string) error {
+
+	var (
+		backbufferSize  = 200000
+		frontbufferSize = 50000
+		r               = bufio.NewReaderSize(os.Stdin, frontbufferSize)
+		buf             []byte
+		pred            []byte
+		err             error
+	)
+
+	if backbufferSize <= frontbufferSize {
+		backbufferSize = (frontbufferSize / 3) * 4
+	}
+
+	for {
+		buf, err = r.ReadSlice('\n')
+
+		if err == bufio.ErrBufferFull {
+			if len(buf) == 0 {
+				continue
+			}
+
+			if pred == nil {
+				pred = make([]byte, len(buf), backbufferSize)
+				copy(pred, buf)
+			} else {
+				pred = append(pred, buf...)
+			}
+			continue
+		} else if err == io.EOF && len(buf) == 0 && len(pred) == 0 {
+			break
+		}
+
+		if len(pred) > 0 {
+			buf, pred = append(pred, buf...), pred[:0]
+		}
+
+		if len(buf) > 0 && buf[len(buf)-1] == '\n' {
+			buf = buf[:len(buf)-1]
+		}
+
+		if len(buf) == 0 {
+			continue
+		}
+
+		// fmt.Fprintf(os.Stderr, "Line: %s\n", string(buf))
+		out <- string(buf)
+	}
+
+	close(out)
+
+	if err != nil && err != io.EOF {
+		return err
+	}
+
+	return nil
 }
 
 func main() {
@@ -263,7 +330,7 @@ func main() {
 
 	go writeToMtbl(s, s_ch, s_done)
 
-	p_ch := make(chan *string, 1000)
+	p_ch := make(chan string, 1000)
 	for i := 0; i < runtime.NumCPU(); i++ {
 		go inputParser(p_ch, s_ch)
 		wg.Add(1)
@@ -272,24 +339,10 @@ func main() {
 	quit := make(chan int)
 	go showProgress(quit)
 
-	scanner := bufio.NewScanner(os.Stdin)
-	buf := make([]byte, 0, 1024*1024*512)
-	scanner.Buffer(buf, 1024*1024*512)
-
-	for scanner.Scan() {
-		raw := strings.TrimSpace(scanner.Text())
-		if len(raw) == 0 {
-			continue
-		}
-
-		atomic.AddInt64(&input_count, 1)
-
-		p_ch <- &raw
-	}
-
-	if scanner.Err() != nil {
-		fmt.Fprintf(os.Stderr, "Error reading lines: %s\n", scanner.Err())
-		os.Exit(1)
+	// Reader closers c_inp on completion
+	e := stdinReader(p_ch)
+	if e != nil {
+		fmt.Fprintf(os.Stderr, "Error reading input: %s\n", e)
 	}
 
 	close(p_ch)
