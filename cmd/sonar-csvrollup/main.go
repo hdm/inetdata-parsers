@@ -170,8 +170,13 @@ func inputParser(c <-chan string, outc chan<- OutputKey) {
 
 		bits := strings.SplitN(raw, ",", 2)
 
-		if len(bits) < 2 || len(bits[0]) == 0 || len(bits[1]) == 0 {
-			fmt.Fprintf(os.Stderr, "[-] Invalid line: %s\n", raw)
+		if len(bits) < 2 || len(bits[0]) == 0 {
+			fmt.Fprintf(os.Stderr, "[-] Invalid line: %q\n", raw)
+			continue
+		}
+
+		// Tons of records with a blank (".") DNS response, just ignore
+		if len(bits[1]) == 0 {
 			continue
 		}
 
@@ -190,6 +195,33 @@ func inputParser(c <-chan string, outc chan<- OutputKey) {
 			outc <- OutputKey{Key: ckey, Vals: cval}
 			ckey = key
 			cval = []string{}
+		}
+
+		// Cleanup common scan artifacts, not comprehensive
+
+		// Ignore any records where key is empty or identical to the value (except NS)
+		if len(val) >= len(key) {
+			parts := strings.SplitN(val, ",", 2)
+			if len(parts) == 2 && parts[0] != "ns" {
+				if len(parts[1]) == 0 || key == parts[1] {
+					continue
+				}
+			}
+		}
+
+		// TXT records start with an erroneous pipe character
+		if len(val) > 5 && val[0:5] == "txt,|" {
+			val = "txt," + val[5:]
+		}
+
+		// DNSSEC-related TXT records often have trailing bytes
+		if len(val) >= 38 && (val[0:6] == "txt,31" || val[0:6] == "txt,00" || val[0:6] == "txt,aa") {
+			val = val[0:38]
+		}
+
+		// Mangled TXT value, ignore
+		if len(val) >= 5 && len(val) <= 10 && val[0:5] == "txt,~" {
+			continue
 		}
 
 		// New data value

@@ -7,12 +7,17 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+var match_ipv6 = regexp.MustCompile(`^((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|((:[0-9A-Fa-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|((:[0-9A-Fa-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|((:[0-9A-Fa-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|((:[0-9A-Fa-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|((:[0-9A-Fa-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))(%.+)?$`)
+
+var match_ipv4 = regexp.MustCompile(`^(?:(?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})[.](?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})[.](?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})[.](?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2}))$`)
 
 var output_count int64 = 0
 var input_count int64 = 0
@@ -141,24 +146,63 @@ func inputParser(c chan string, c_ip4 chan string, c_ip6 chan string, c_names ch
 			continue
 		}
 
+		var name, rtype, value string
+
 		bits := strings.SplitN(raw, ",", 3)
 
-		if len(bits) != 3 || len(bits[0]) == 0 || len(bits[1]) == 0 || len(bits[2]) == 0 {
-			fmt.Fprintf(os.Stderr, "[-] Invalid line: %q -> %q\n", raw, bits)
+		if len(bits) < 2 || len(bits[0]) == 0 {
+			fmt.Fprintf(os.Stderr, "[-] Invalid line: %q\n", raw)
 			continue
 		}
 
-		name := bits[0]
-		rtype := bits[1]
-		value := bits[2]
+		// Tons of records with a blank (".") DNS response, just ignore
+		if len(bits[1]) == 0 {
+			continue
+		}
+
+		name = bits[0]
+
+		if len(bits) == 3 {
+			// FDNS data with three fields
+			rtype = bits[1]
+			value = bits[2]
+		}
+
+		if len(bits) == 2 {
+			// RDNS data with two fields
+			value = bits[1]
+
+			// Determine the field type based on pattern
+			if match_ipv4.Match([]byte(name)) {
+				rtype = "a"
+			} else if match_ipv6.Match([]byte(name)) {
+				rtype = "aaaa"
+			} else {
+				fmt.Fprintf(os.Stderr, "[-] Unknown two-field format: %s\n", raw)
+				continue
+			}
+		}
+
+		// Skip any record that refers to itself
+		if value == name {
+			continue
+		}
 
 		atomic.AddInt64(&input_count, 1)
 
 		switch rtype {
 		case "a":
+			// Skip invalid IPv4 records
+			if !match_ipv4.Match([]byte(value)) {
+				continue
+			}
 			c_ip4 <- fmt.Sprintf("%s,%s\n", value, name)
 
 		case "aaaa":
+			// Skip invalid IPv6 records
+			if !match_ipv6.Match([]byte(value)) {
+				continue
+			}
 			c_ip6 <- fmt.Sprintf("%s,%s\n", value, name)
 
 		case "cname", "ns", "ptr":
@@ -327,7 +371,6 @@ func main() {
 	go outputWriter(sort_input[0], c_ip4)
 	go outputWriter(sort_input[1], c_ip6)
 	go outputWriter(sort_input[2], c_names)
-	wg.Add(3)
 
 	// Progress tracker
 	quit := make(chan int)
@@ -345,10 +388,15 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error reading input: %s\n", e)
 	}
 
+	// Wait for the input parsers to finish
+	wg.Wait()
+
 	close(c_ip4)
 	close(c_ip6)
 	close(c_names)
 
+	// Wait for the channel writers to finish
+	wg.Add(3)
 	wg.Wait()
 
 	for i := range sort_input {
