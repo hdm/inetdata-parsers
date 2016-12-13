@@ -178,8 +178,8 @@ func inputParser(d chan string, c chan NewRecord) {
 			continue
 		}
 		vals := strings.SplitN(data, "\x00", -1)
-		outp := [][]string{}
 
+		var outp [][]string
 		for i := range vals {
 			info := strings.SplitN(vals[i], ",", 2)
 

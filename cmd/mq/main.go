@@ -1,13 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/edmonds/golang-mtbl"
 	"io/ioutil"
 	"os"
 	"runtime"
-	"strings"
 )
 
 func reverseKey(s string) string {
@@ -69,8 +69,8 @@ func main() {
 	prefix := flag.String("p", "", "Only return keys with this prefix")
 	rev_prefix := flag.String("r", "", "Only return keys with this prefix in reverse form")
 	rev_key := flag.Bool("R", false, "Display matches with the key in reverse form")
-	zero_split := flag.Bool("z", false, "Split values into arrays using the null byte")
 	no_quotes := flag.Bool("n", false, "Print raw values, not quoted values")
+	as_json := flag.Bool("j", false, "Print each record as a single line of JSON")
 
 	flag.Parse()
 
@@ -122,17 +122,32 @@ func main() {
 			}
 
 			key := string(key_bytes)
-			val := []string{string(val_bytes)}
-
-			if *zero_split {
-				val = strings.SplitN(string(val_bytes), "\x00", -1)
-			}
+			val := string(val_bytes)
 
 			if *rev_key {
 				key = reverseKey(key)
 			}
 
-			if *key_only {
+			if *as_json {
+				o := make(map[string]interface{})
+				v := make([][]string, 1)
+
+				if de := json.Unmarshal([]byte(val), &v); de != nil {
+					fmt.Fprintf(os.Stderr, "Could not unmarshal %s -> %s as json: %s\n", key, val, e)
+					continue
+				}
+
+				o["key"] = string(key)
+				o["val"] = v
+
+				b, e := json.Marshal(o)
+				if e != nil {
+					fmt.Fprintf(os.Stderr, "Could not marshal %s -> %s as json: %s\n", key, val, e)
+					continue
+				}
+				fmt.Println(string(b))
+
+			} else if *key_only {
 				fmt.Printf("%s\n", key)
 			} else if *val_only {
 				if *no_quotes {

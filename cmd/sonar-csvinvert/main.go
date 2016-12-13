@@ -408,7 +408,6 @@ func main() {
 
 	// Wait for the downstream processes to complete
 	for i := range subprocs {
-		fmt.Fprintf(os.Stderr, "Waiting on subproc #%d\n", i)
 		subprocs[i].Wait()
 	}
 
