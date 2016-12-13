@@ -193,14 +193,14 @@ func inputParser(c chan string, c_ip4 chan string, c_ip6 chan string, c_names ch
 		switch rtype {
 		case "a":
 			// Skip invalid IPv4 records
-			if !match_ipv4.Match([]byte(value)) {
+			if !(match_ipv4.Match([]byte(value)) || match_ipv4.Match([]byte(name))) {
 				continue
 			}
 			c_ip4 <- fmt.Sprintf("%s,%s\n", value, name)
 
 		case "aaaa":
 			// Skip invalid IPv6 records
-			if !match_ipv6.Match([]byte(value)) {
+			if !(match_ipv6.Match([]byte(value)) || match_ipv6.Match([]byte(name))) {
 				continue
 			}
 			c_ip6 <- fmt.Sprintf("%s,%s\n", value, name)
