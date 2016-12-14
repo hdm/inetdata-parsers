@@ -72,7 +72,7 @@ func showProgress(quit chan int) {
 			}
 			elapsed := time.Since(start)
 			if elapsed.Seconds() > 1.0 {
-				fmt.Fprintf(os.Stderr, "[*] [sonar-fdns2mtbl] Read %d and wrote %d records in %d seconds (%d/s in, %d/s out) (merged: %d)\n",
+				fmt.Fprintf(os.Stderr, "[*] [inetdata-fdns2mtbl] Read %d and wrote %d records in %d seconds (%d/s in, %d/s out) (merged: %d)\n",
 					icount,
 					ocount,
 					int(elapsed.Seconds()),

@@ -51,7 +51,7 @@ func showProgress(quit chan int) {
 			}
 			elapsed := time.Since(start)
 			if elapsed.Seconds() > 1.0 {
-				fmt.Fprintf(os.Stderr, "[*] [sonar-csvrollup] Read %d and wrote %d records in %d seconds (%d/s in, %d/s out)\n",
+				fmt.Fprintf(os.Stderr, "[*] [inetdata-csvrollup] Read %d and wrote %d records in %d seconds (%d/s in, %d/s out)\n",
 					icount,
 					ocount,
 					int(elapsed.Seconds()),

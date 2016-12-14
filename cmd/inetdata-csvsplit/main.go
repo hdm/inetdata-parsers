@@ -56,7 +56,7 @@ func showProgress(quit chan int) {
 			}
 			elapsed := time.Since(start)
 			if elapsed.Seconds() > 1.0 {
-				fmt.Fprintf(os.Stderr, "[*] [sonar-csvsplit] Read %d and wrote %d records in %d seconds (%d/s in, %d/s out)\n",
+				fmt.Fprintf(os.Stderr, "[*] [inetdata-csvsplit] Read %d and wrote %d records in %d seconds (%d/s in, %d/s out)\n",
 					icount,
 					ocount,
 					int(elapsed.Seconds()),
@@ -246,8 +246,8 @@ func main() {
 			os.Exit(1)
 		}
 
-		// Create the sonar-csvrollup process
-		roll_proc := exec.Command("nice", "sonar-csvrollup")
+		// Create the inetdata-csvrollup process
+		roll_proc := exec.Command("nice", "inetdata-csvrollup")
 
 		// Configure stdio
 		roll_stdout, roe := roll_proc.StdoutPipe()
@@ -262,7 +262,7 @@ func main() {
 
 		// Start the rollup process
 		if e := roll_proc.Start(); e != nil {
-			fmt.Fprintf(os.Stderr, "Error: failed to execute the sonar-csvrollup command: %s\n", e)
+			fmt.Fprintf(os.Stderr, "Error: failed to execute the inetdata-csvrollup command: %s\n", e)
 			os.Exit(1)
 		}
 
