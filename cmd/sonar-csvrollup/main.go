@@ -1,10 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
-	"io"
+	"github.com/hdm/inetdata-parsers/utils"
 	"os"
 	"runtime"
 	"strings"
@@ -94,65 +93,6 @@ func mergeAndEmit(c chan OutputKey, o chan string) {
 	}
 
 	wg.Done()
-}
-
-func stdinReader(out chan<- string) error {
-
-	var (
-		backbufferSize  = 200000
-		frontbufferSize = 50000
-		r               = bufio.NewReaderSize(os.Stdin, frontbufferSize)
-		buf             []byte
-		pred            []byte
-		err             error
-	)
-
-	if backbufferSize <= frontbufferSize {
-		backbufferSize = (frontbufferSize / 3) * 4
-	}
-
-	for {
-		buf, err = r.ReadSlice('\n')
-
-		if err == bufio.ErrBufferFull {
-			if len(buf) == 0 {
-				continue
-			}
-
-			if pred == nil {
-				pred = make([]byte, len(buf), backbufferSize)
-				copy(pred, buf)
-			} else {
-				pred = append(pred, buf...)
-			}
-			continue
-		} else if err == io.EOF && len(buf) == 0 && len(pred) == 0 {
-			break
-		}
-
-		if len(pred) > 0 {
-			buf, pred = append(pred, buf...), pred[:0]
-		}
-
-		if len(buf) > 0 && buf[len(buf)-1] == '\n' {
-			buf = buf[:len(buf)-1]
-		}
-
-		if len(buf) == 0 {
-			continue
-		}
-
-		// fmt.Fprintf(os.Stderr, "Line: %s\n", string(buf))
-		out <- string(buf)
-	}
-
-	close(out)
-
-	if err != nil && err != io.EOF {
-		return err
-	}
-
-	return nil
 }
 
 func inputParser(c <-chan string, outc chan<- OutputKey) {
@@ -269,7 +209,7 @@ func main() {
 	wg.Add(1)
 
 	// Reader closers c_inp on completion
-	e := stdinReader(c_inp)
+	e := utils.ReadLines(os.Stdin, c_inp)
 	if e != nil {
 		fmt.Fprintf(os.Stderr, "Error reading input: %s\n", e)
 	}

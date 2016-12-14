@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/edmonds/golang-mtbl"
+	"github.com/hdm/inetdata-parsers/utils"
 	"github.com/peterbourgon/mergemap"
 	"os"
 	"runtime"
@@ -63,15 +64,6 @@ func mergeFunc(key []byte, val0 []byte, val1 []byte) (mergedVal []byte) {
 	}
 
 	return d
-}
-
-func reverseKey(s string) string {
-	b := make([]byte, len(s))
-	var j int = len(s) - 1
-	for i := 0; i <= j; i++ {
-		b[j-i] = s[i]
-	}
-	return string(b)
 }
 
 func main() {
@@ -164,7 +156,7 @@ func main() {
 		kstr := kval.(string)
 
 		if *reverse_key {
-			kstr = reverseKey(kstr)
+			kstr = utils.ReverseKey(kstr)
 		}
 
 		if e := s.Add([]byte(kstr), []byte(raw)); e != nil {

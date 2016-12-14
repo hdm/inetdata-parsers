@@ -4,12 +4,12 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"github.com/edmonds/golang-mtbl"
+	"github.com/hdm/inetdata-parsers/utils"
 	"os"
 	"runtime"
 	"time"
 )
-
-import "github.com/edmonds/golang-mtbl"
 
 var compression_types = map[string]int{
 	"none":   mtbl.COMPRESSION_NONE,
@@ -63,15 +63,6 @@ func showProgress(quit chan int) {
 func mergeFunc(key []byte, val0 []byte, val1 []byte) (mergedVal []byte) {
 	merge_count++
 	return val0
-}
-
-func reverseKey(s string) string {
-	b := make([]byte, len(s))
-	var j int = len(s) - 1
-	for i := 0; i <= j; i++ {
-		b[j-i] = s[i]
-	}
-	return string(b)
 }
 
 func main() {
@@ -133,7 +124,7 @@ func main() {
 		}
 
 		if *reverse_key {
-			kstr = reverseKey(kstr)
+			kstr = utils.ReverseKey(kstr)
 		}
 
 		if *sort_skip {

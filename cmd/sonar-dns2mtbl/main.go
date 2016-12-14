@@ -1,12 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/edmonds/golang-mtbl"
-	"io"
+	"github.com/hdm/inetdata-parsers/utils"
 	"os"
 	"regexp"
 	"runtime"
@@ -138,15 +137,6 @@ func mergeFunc(key []byte, val0 []byte, val1 []byte) (mergedVal []byte) {
 	return d
 }
 
-func reverseKey(s string) string {
-	b := make([]byte, len(s))
-	var j int = len(s) - 1
-	for i := 0; i <= j; i++ {
-		b[j-i] = s[i]
-	}
-	return string(b)
-}
-
 func writeToMtbl(s *mtbl.Sorter, c chan NewRecord, d chan bool) {
 	for r := range c {
 		if e := s.Add(r.Key, r.Val); e != nil {
@@ -202,71 +192,12 @@ func inputParser(d chan string, c chan NewRecord) {
 
 		// Reverse the key unless its an IP address
 		if !(match_ipv4.Match([]byte(name)) || match_ipv6.Match([]byte(name))) {
-			name = reverseKey(name)
+			name = utils.ReverseKey(name)
 		}
 
 		c <- NewRecord{Key: []byte(name), Val: json}
 	}
 	wg.Done()
-}
-
-func stdinReader(out chan<- string) error {
-
-	var (
-		backbufferSize  = 200000
-		frontbufferSize = 50000
-		r               = bufio.NewReaderSize(os.Stdin, frontbufferSize)
-		buf             []byte
-		pred            []byte
-		err             error
-	)
-
-	if backbufferSize <= frontbufferSize {
-		backbufferSize = (frontbufferSize / 3) * 4
-	}
-
-	for {
-		buf, err = r.ReadSlice('\n')
-
-		if err == bufio.ErrBufferFull {
-			if len(buf) == 0 {
-				continue
-			}
-
-			if pred == nil {
-				pred = make([]byte, len(buf), backbufferSize)
-				copy(pred, buf)
-			} else {
-				pred = append(pred, buf...)
-			}
-			continue
-		} else if err == io.EOF && len(buf) == 0 && len(pred) == 0 {
-			break
-		}
-
-		if len(pred) > 0 {
-			buf, pred = append(pred, buf...), pred[:0]
-		}
-
-		if len(buf) > 0 && buf[len(buf)-1] == '\n' {
-			buf = buf[:len(buf)-1]
-		}
-
-		if len(buf) == 0 {
-			continue
-		}
-
-		// fmt.Fprintf(os.Stderr, "Line: %s\n", string(buf))
-		out <- string(buf)
-	}
-
-	close(out)
-
-	if err != nil && err != io.EOF {
-		return err
-	}
-
-	return nil
 }
 
 func main() {
@@ -340,7 +271,7 @@ func main() {
 	go showProgress(quit)
 
 	// Reader closes input on completion
-	e := stdinReader(p_ch)
+	e := utils.ReadLines(os.Stdin, p_ch)
 	if e != nil {
 		fmt.Fprintf(os.Stderr, "Error reading input: %s\n", e)
 	}

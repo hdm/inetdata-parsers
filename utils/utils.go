@@ -1,0 +1,74 @@
+package utils
+
+import (
+	"bufio"
+	"io"
+	"os"
+)
+
+func ReverseKey(s string) string {
+	b := make([]byte, len(s))
+	var j int = len(s) - 1
+	for i := 0; i <= j; i++ {
+		b[j-i] = s[i]
+	}
+	return string(b)
+}
+
+func ReadLines(input *os.File, out chan<- string) error {
+
+	var (
+		backbufferSize  = 200000
+		frontbufferSize = 50000
+		r               = bufio.NewReaderSize(os.Stdin, frontbufferSize)
+		buf             []byte
+		pred            []byte
+		err             error
+	)
+
+	if backbufferSize <= frontbufferSize {
+		backbufferSize = (frontbufferSize / 3) * 4
+	}
+
+	for {
+		buf, err = r.ReadSlice('\n')
+
+		if err == bufio.ErrBufferFull {
+			if len(buf) == 0 {
+				continue
+			}
+
+			if pred == nil {
+				pred = make([]byte, len(buf), backbufferSize)
+				copy(pred, buf)
+			} else {
+				pred = append(pred, buf...)
+			}
+			continue
+		} else if err == io.EOF && len(buf) == 0 && len(pred) == 0 {
+			break
+		}
+
+		if len(pred) > 0 {
+			buf, pred = append(pred, buf...), pred[:0]
+		}
+
+		if len(buf) > 0 && buf[len(buf)-1] == '\n' {
+			buf = buf[:len(buf)-1]
+		}
+
+		if len(buf) == 0 {
+			continue
+		}
+
+		out <- string(buf)
+	}
+
+	close(out)
+
+	if err != nil && err != io.EOF {
+		return err
+	}
+
+	return nil
+}
