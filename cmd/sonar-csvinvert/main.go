@@ -32,9 +32,7 @@ type OutputKey struct {
 func usage() {
 	fmt.Println("Usage: " + os.Args[0] + " [options]")
 	fmt.Println("")
-	fmt.Println("Reads an unsorted FDNS CSV from stdin, inverts the keys with the values, and writes ")
-	fmt.Println("unsorted output to stdout. Record types are prepended with 'r' to indicate that the")
-	fmt.Println("relationship is inverted.")
+	fmt.Println("Reads an unsorted DNS CSV from stdin, writes out sorted and merged normal and inverse CSVs.")
 	fmt.Println("")
 	fmt.Println("Options:")
 	flag.PrintDefaults()
@@ -58,7 +56,7 @@ func showProgress(quit chan int) {
 			}
 			elapsed := time.Since(start)
 			if elapsed.Seconds() > 1.0 {
-				fmt.Fprintf(os.Stderr, "[*] [sonar-csvinvert] Read %d and wrote %d records in %d seconds (%d/s in, %d/s out)\n",
+				fmt.Fprintf(os.Stderr, "[*] [sonar-csvsplit] Read %d and wrote %d records in %d seconds (%d/s in, %d/s out)\n",
 					icount,
 					ocount,
 					int(elapsed.Seconds()),
@@ -77,7 +75,7 @@ func outputWriter(fd io.WriteCloser, c chan string) {
 	wg.Done()
 }
 
-func inputParser(c chan string, c_ip4 chan string, c_ip6 chan string, c_names chan string) {
+func inputParser(c chan string, c_names chan string, c_inverse chan string) {
 
 	for r := range c {
 
@@ -133,28 +131,36 @@ func inputParser(c chan string, c_ip4 chan string, c_ip6 chan string, c_names ch
 
 		switch rtype {
 		case "a":
-			// Skip invalid IPv4 records
+			// Skip invalid IPv4 records (TODO: verify logic)
 			if !(match_ipv4.Match([]byte(value)) || match_ipv4.Match([]byte(name))) {
 				continue
 			}
-			c_ip4 <- fmt.Sprintf("%s,%s\n", value, name)
+			c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, value)
+			c_inverse <- fmt.Sprintf("%s,r-%s,%s\n", value, rtype, name)
 
 		case "aaaa":
-			// Skip invalid IPv6 records
+			// Skip invalid IPv6 records (TODO: verify logic)
 			if !(match_ipv6.Match([]byte(value)) || match_ipv6.Match([]byte(name))) {
 				continue
 			}
-			c_ip6 <- fmt.Sprintf("%s,%s\n", value, name)
+			c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, value)
+			c_inverse <- fmt.Sprintf("%s,r-%s,%s\n", value, rtype, name)
 
 		case "cname", "ns", "ptr":
-			c_names <- fmt.Sprintf("%s,r-%s,%s\n", value, rtype, name)
+			c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, value)
+			c_inverse <- fmt.Sprintf("%s,r-%s,%s\n", value, rtype, name)
 
 		case "mx":
 			parts := strings.SplitN(value, " ", 2)
 			if len(parts) != 2 || len(parts[1]) == 0 {
 				continue
 			}
-			c_names <- fmt.Sprintf("%s,r-%s,%s\n", parts[1], rtype, name)
+			c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, parts[1])
+			c_inverse <- fmt.Sprintf("%s,r-%s,%s\n", parts[1], rtype, name)
+
+		default:
+			// No inverse output for other record types (TXT, DNSSEC, etc)
+			c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, value)
 		}
 	}
 	wg.Done()
@@ -177,6 +183,10 @@ func main() {
 	}
 
 	if len(*sort_tmp) == 0 {
+		*sort_tmp = os.Getenv("HOME")
+	}
+
+	if len(*sort_tmp) == 0 {
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -185,7 +195,7 @@ func main() {
 	base := flag.Args()[0]
 	out_fds := []*os.File{}
 
-	suffix := []string{"-ip4.gz", "-ip6.gz", "-names.gz"}
+	suffix := []string{"-names.gz", "-names-inverse.gz"}
 	for i := range suffix {
 		fd, e := os.Create(base + suffix[i])
 		if e != nil {
@@ -197,7 +207,7 @@ func main() {
 	}
 
 	// Sort and compression pipes
-	sort_input := [3]io.WriteCloser{}
+	sort_input := [2]io.WriteCloser{}
 	subprocs := []*exec.Cmd{}
 
 	for i := range out_fds {
@@ -305,13 +315,11 @@ func main() {
 		subprocs = append(subprocs, pigz_proc)
 	}
 
-	c_ip4 := make(chan string, 1000)
-	c_ip6 := make(chan string, 1000)
 	c_names := make(chan string, 1000)
+	c_inverse := make(chan string, 1000)
 
-	go outputWriter(sort_input[0], c_ip4)
-	go outputWriter(sort_input[1], c_ip6)
-	go outputWriter(sort_input[2], c_names)
+	go outputWriter(sort_input[0], c_names)
+	go outputWriter(sort_input[1], c_inverse)
 
 	// Progress tracker
 	quit := make(chan int)
@@ -319,11 +327,11 @@ func main() {
 
 	// Parse stdin
 	c_inp := make(chan string, 1000)
-	go inputParser(c_inp, c_ip4, c_ip6, c_names)
-	go inputParser(c_inp, c_ip4, c_ip6, c_names)
+	go inputParser(c_inp, c_names, c_inverse)
+	go inputParser(c_inp, c_names, c_inverse)
 	wg.Add(2)
 
-	// Reader closers c_inp on completion
+	// Reader closes c_inp on completion
 	e := utils.ReadLines(os.Stdin, c_inp)
 	if e != nil {
 		fmt.Fprintf(os.Stderr, "Error reading input: %s\n", e)
@@ -332,12 +340,11 @@ func main() {
 	// Wait for the input parsers to finish
 	wg.Wait()
 
-	close(c_ip4)
-	close(c_ip6)
 	close(c_names)
+	close(c_inverse)
 
 	// Wait for the channel writers to finish
-	wg.Add(3)
+	wg.Add(2)
 	wg.Wait()
 
 	for i := range sort_input {
