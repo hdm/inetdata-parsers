@@ -220,7 +220,6 @@ func inputParser(c chan string, c_names chan string) {
 
 			// Spawn more parsers
 			for i := 0; i < runtime.NumCPU()-1; i++ {
-				fmt.Fprintf(os.Stderr, "Launching goroutine!\n")
 				go inputParser(c, c_names)
 				wg.Add(1)
 			}
