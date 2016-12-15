@@ -127,6 +127,11 @@ func inputParser(c chan string, c_names chan string, c_inverse chan string) {
 			continue
 		}
 
+		// Skip any record with an empty value
+		if len(value) == 0 {
+			continue
+		}
+
 		atomic.AddInt64(&input_count, 1)
 
 		switch rtype {

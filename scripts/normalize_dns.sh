@@ -10,6 +10,7 @@ export LC_ALL=C
 
 time (
 	nice pigz -dc ${src} | \
+	head -n 10000000 | \
 	nice inetdata-csvsplit -m 8 -t ${tmp} ${out}
 )
 
@@ -17,4 +18,4 @@ time (
 time (nice pigz -dc ${out}-names.gz | nice inetdata-dns2mtbl -m 8 -t ${tmp} ${out}.mtbl)
 
 # Generate an inverse-lookup mtbl
-time (nice pigz -dc ${out}-inverse-names.gz | nice inetdata-dns2mtbl -m 8 -t ${tmp} ${out}-inverse.mtbl)
+time (nice pigz -dc ${out}-names-inverse.gz | nice inetdata-dns2mtbl -m 8 -t ${tmp} ${out}-inverse.mtbl)
