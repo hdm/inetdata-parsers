@@ -1,7 +1,7 @@
 #!/bin/bash
 
 src=$1
-mem=$(echo `free -g | grep ^Mem | awk '{print $2}'` / 8.0 | bc)G
+mem=$(echo `free -g | grep ^Mem | awk '{print $2}'` / 4.0 | bc)G
 tmp=${HOME}
 thr=`nproc`
 base=`basename $1`
