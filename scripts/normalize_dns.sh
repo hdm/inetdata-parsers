@@ -10,7 +10,7 @@ export LC_ALL=C
 
 time (
 	nice pigz -dc ${src} | \
-	head -n 10000000 | \
+#	head -n 10000000 | \
 	nice inetdata-csvsplit -m 8 -t ${tmp} ${out}
 )
 
