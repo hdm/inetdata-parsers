@@ -22,7 +22,8 @@ var match_ipv4 = regexp.MustCompile(`^(?:(?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2}
 var output_count int64 = 0
 var input_count int64 = 0
 var stdout_lock sync.Mutex
-var wg sync.WaitGroup
+var wg1 sync.WaitGroup
+var wg2 sync.WaitGroup
 
 type OutputKey struct {
 	Key  string
@@ -72,7 +73,7 @@ func outputWriter(fd io.WriteCloser, c chan string) {
 		fd.Write([]byte(r))
 		atomic.AddInt64(&output_count, 1)
 	}
-	wg.Done()
+	wg1.Done()
 }
 
 func inputParser(c chan string, c_names chan string, c_inverse chan string) {
@@ -168,7 +169,7 @@ func inputParser(c chan string, c_names chan string, c_inverse chan string) {
 			c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, value)
 		}
 	}
-	wg.Done()
+	wg2.Done()
 }
 
 func main() {
@@ -325,6 +326,7 @@ func main() {
 
 	go outputWriter(sort_input[0], c_names)
 	go outputWriter(sort_input[1], c_inverse)
+	wg1.Add(2)
 
 	// Progress tracker
 	quit := make(chan int)
@@ -334,7 +336,7 @@ func main() {
 	c_inp := make(chan string, 1000)
 	go inputParser(c_inp, c_names, c_inverse)
 	go inputParser(c_inp, c_names, c_inverse)
-	wg.Add(2)
+	wg2.Add(2)
 
 	// Reader closes c_inp on completion
 	e := utils.ReadLines(os.Stdin, c_inp)
@@ -343,14 +345,13 @@ func main() {
 	}
 
 	// Wait for the input parsers to finish
-	wg.Wait()
+	wg2.Wait()
 
 	close(c_names)
 	close(c_inverse)
 
 	// Wait for the channel writers to finish
-	wg.Add(2)
-	wg.Wait()
+	wg1.Wait()
 
 	for i := range sort_input {
 		sort_input[i].Close()
