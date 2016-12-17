@@ -1,5 +1,5 @@
 ALL:
-	@pkg-config --exists libmtbl || (echo "Missing libmtbl: sudo apt install libmtbl" && exit 1)
+	@pkg-config --exists libmtbl || (echo "Missing libmtbl: sudo apt install libmtbl-dev" && exit 1)
 	@go get github.com/mitchellh/gox && \
 	go get -u ./... && \
 	go fmt ./... && \
