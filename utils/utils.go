@@ -9,7 +9,7 @@ import (
 	"regexp"
 )
 
-var Version string
+var Version string = "0.0.1"
 
 var MTBLCompressionTypes = map[string]int{
 	"none":   mtbl.COMPRESSION_NONE,
