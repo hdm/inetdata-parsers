@@ -14,22 +14,20 @@ $ sudo apt-get install build-essential git make golang pigz p7zip-full libmtbl-d
 Configure your GO environment if you haven't done so, by adding the following to ~/.bashrc
 
 ```
-export GOPATH=$HOME
-```
-
-Load the profile settings:
-```
+$ echo 'export GOPATH=$HOME' >> ~/.bashrc
 $ source ~/.bashrc
 ```
 
-Clone this repository into the GOPATH:
+Clone this repository into the correct path:
 ```
-$ go get github.com/hdm/inetdata-parsers
+$ mkdir -p $GOPATH/src/github.com/hdm/
+$ cd $GOPATH/src/github.com/hdm/
+$ git clone https://github.com/hdm/inetdata-parsers.git
 ```
 
 ### Install
 ```
-$ cd $GOPATH/src/hdm/inetdata-parsers/
+$ cd $GOPATH/src/github.com/hdm/inetdata-parsers/
 $ make
 ```
 
