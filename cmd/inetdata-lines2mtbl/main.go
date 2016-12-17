@@ -11,25 +11,8 @@ import (
 	"time"
 )
 
-var compression_types = map[string]int{
-	"none":   mtbl.COMPRESSION_NONE,
-	"snappy": mtbl.COMPRESSION_SNAPPY,
-	"zlib":   mtbl.COMPRESSION_ZLIB,
-	"lz4":    mtbl.COMPRESSION_LZ4,
-	"lz4hc":  mtbl.COMPRESSION_LZ4HC,
-}
-
 var merge_count int64 = 0
 var input_count int64 = 0
-
-func fail(args ...interface{}) {
-	fmt.Fprintln(os.Stderr, args...)
-	os.Exit(-1)
-}
-
-func warn(args ...interface{}) {
-	fmt.Fprintln(os.Stderr, args...)
-}
 
 func usage() {
 	fmt.Println("Usage: " + os.Args[0] + " [options]")
@@ -77,8 +60,14 @@ func main() {
 	sort_skip := flag.Bool("S", false, "Skip the sorting phase and assume keys are in pre-sorted order")
 	sort_tmp := flag.String("t", "", "The temporary directory to use for the sorting phase")
 	sort_mem := flag.Uint64("m", 1, "The maximum amount of memory to use, in gigabytes, for the sorting phase")
+	version := flag.Bool("version", false, "Show the version and build timestamp")
 
 	flag.Parse()
+
+	if *version {
+		utils.PrintVersion()
+		os.Exit(0)
+	}
 
 	if len(flag.Args()) != 1 {
 		usage()
@@ -93,7 +82,7 @@ func main() {
 		sort_opt.TempDir = *sort_tmp
 	}
 
-	compression_alg, ok := compression_types[*compression]
+	compression_alg, ok := utils.MTBLCompressionTypes[*compression]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "Invalid compression algorithm: %s\n", *compression)
 		os.Exit(1)

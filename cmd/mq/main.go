@@ -5,19 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"github.com/edmonds/golang-mtbl"
+	"github.com/hdm/inetdata-parsers/utils"
 	"io/ioutil"
 	"os"
 	"runtime"
 )
-
-func reverseKey(s string) string {
-	b := make([]byte, len(s))
-	var j int = len(s) - 1
-	for i := 0; i <= j; i++ {
-		b[j-i] = s[i]
-	}
-	return string(b)
-}
 
 func usage() {
 	fmt.Println("Usage: " + os.Args[0] + " [options] <mtbl> ... <mtbl>")
@@ -71,8 +63,14 @@ func main() {
 	rev_key := flag.Bool("R", false, "Display matches with the key in reverse form")
 	no_quotes := flag.Bool("n", false, "Print raw values, not quoted values")
 	as_json := flag.Bool("j", false, "Print each record as a single line of JSON")
+	version := flag.Bool("version", false, "Show the version and build timestamp")
 
 	flag.Parse()
+
+	if *version {
+		utils.PrintVersion()
+		os.Exit(0)
+	}
 
 	if len(flag.Args()) == 0 {
 		usage()
@@ -109,7 +107,7 @@ func main() {
 			p := *prefix
 			it = mtbl.IterPrefix(r, []byte(p))
 		} else if len(*rev_prefix) > 0 {
-			p := reverseKey(*rev_prefix)
+			p := utils.ReverseKey(*rev_prefix)
 			it = mtbl.IterPrefix(r, []byte(p))
 		} else {
 			it = mtbl.IterAll(r)
@@ -125,7 +123,7 @@ func main() {
 			val := string(val_bytes)
 
 			if *rev_key {
-				key = reverseKey(key)
+				key = utils.ReverseKey(key)
 			}
 
 			if *as_json {

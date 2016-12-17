@@ -182,7 +182,14 @@ func main() {
 	os.Setenv("LC_ALL", "C")
 
 	flag.Usage = func() { usage() }
+	version := flag.Bool("version", false, "Show the version and build timestamp")
+
 	flag.Parse()
+
+	if *version {
+		utils.PrintVersion()
+		os.Exit(0)
+	}
 
 	// Progress tracker
 	quit := make(chan int)

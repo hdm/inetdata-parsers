@@ -7,17 +7,12 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"regexp"
 	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
-
-var match_ipv6 = regexp.MustCompile(`^((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|((:[0-9A-Fa-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|((:[0-9A-Fa-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|((:[0-9A-Fa-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|((:[0-9A-Fa-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|((:[0-9A-Fa-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))(%.+)?$`)
-
-var match_ipv4 = regexp.MustCompile(`^(?:(?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})[.](?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})[.](?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})[.](?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2}))$`)
 
 var output_count int64 = 0
 var input_count int64 = 0
@@ -113,9 +108,9 @@ func inputParser(c chan string, c_names chan string, c_inverse chan string) {
 			value = bits[1]
 
 			// Determine the field type based on pattern
-			if match_ipv4.Match([]byte(name)) {
+			if utils.Match_IPv4.Match([]byte(name)) {
 				rtype = "a"
-			} else if match_ipv6.Match([]byte(name)) {
+			} else if utils.Match_IPv6.Match([]byte(name)) {
 				rtype = "aaaa"
 			} else {
 				fmt.Fprintf(os.Stderr, "[-] Unknown two-field format: %s\n", raw)
@@ -138,7 +133,7 @@ func inputParser(c chan string, c_names chan string, c_inverse chan string) {
 		switch rtype {
 		case "a":
 			// Skip invalid IPv4 records (TODO: verify logic)
-			if !(match_ipv4.Match([]byte(value)) || match_ipv4.Match([]byte(name))) {
+			if !(utils.Match_IPv4.Match([]byte(value)) || utils.Match_IPv4.Match([]byte(name))) {
 				continue
 			}
 			c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, value)
@@ -146,7 +141,7 @@ func inputParser(c chan string, c_names chan string, c_inverse chan string) {
 
 		case "aaaa":
 			// Skip invalid IPv6 records (TODO: verify logic)
-			if !(match_ipv6.Match([]byte(value)) || match_ipv6.Match([]byte(name))) {
+			if !(utils.Match_IPv6.Match([]byte(value)) || utils.Match_IPv6.Match([]byte(name))) {
 				continue
 			}
 			c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, value)
@@ -180,8 +175,14 @@ func main() {
 	flag.Usage = func() { usage() }
 	sort_tmp := flag.String("t", "", "The temporary directory to use for the sorting phase")
 	sort_mem := flag.Uint64("m", 1, "The maximum amount of memory to use, in gigabytes, for each of the six sort processes")
+	version := flag.Bool("version", false, "Show the version and build timestamp")
 
 	flag.Parse()
+
+	if *version {
+		utils.PrintVersion()
+		os.Exit(0)
+	}
 
 	if len(flag.Args()) != 1 {
 		flag.Usage()

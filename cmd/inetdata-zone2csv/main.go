@@ -24,12 +24,6 @@ var zone_mode = 0
 var zone_name = ""
 var zone_matched = false
 
-var match_ipv6 = regexp.MustCompile(`^((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|((:[0-9A-Fa-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|((:[0-9A-Fa-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|((:[0-9A-Fa-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|((:[0-9A-Fa-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|((:[0-9A-Fa-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))(%.+)?$`)
-
-var match_ipv4 = regexp.MustCompile(`^(?:(?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})[.](?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})[.](?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})[.](?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2}))$`)
-
-var split_ws = regexp.MustCompile(`\s+`)
-
 var output_count int64 = 0
 var input_count int64 = 0
 var stdout_lock sync.Mutex
@@ -100,12 +94,12 @@ func writeRecord(c_names chan string, name string, rtype string, value string) {
 		c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, value)
 
 	case "a":
-		if match_ipv4.Match([]byte(value)) {
+		if utils.Match_IPv4.Match([]byte(value)) {
 			c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, value)
 		}
 
 	case "aaaa":
-		if match_ipv6.Match([]byte(value)) {
+		if utils.Match_IPv6.Match([]byte(value)) {
 			c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, value)
 		}
 	}
@@ -118,7 +112,7 @@ func normalizeName(name string) string {
 	}
 
 	// Leave IP addresses alone
-	if match_ipv4.Match([]byte(name)) || match_ipv6.Match([]byte(name)) {
+	if utils.Match_IPv4.Match([]byte(name)) || utils.Match_IPv6.Match([]byte(name)) {
 		return name
 	}
 
@@ -133,7 +127,7 @@ func normalizeName(name string) string {
 }
 
 func parseZoneCOM(raw string, c_names chan string) {
-	bits := split_ws.Split(strings.ToLower(raw), -1)
+	bits := utils.Split_WS.Split(strings.ToLower(raw), -1)
 	if len(bits) != 3 {
 		return
 	}
@@ -143,7 +137,7 @@ func parseZoneCOM(raw string, c_names chan string) {
 }
 
 func parseZoneBIZ(raw string, c_names chan string) {
-	bits := split_ws.Split(strings.ToLower(raw), -1)
+	bits := utils.Split_WS.Split(strings.ToLower(raw), -1)
 	if len(bits) != 5 {
 		return
 	}
@@ -153,7 +147,7 @@ func parseZoneBIZ(raw string, c_names chan string) {
 }
 
 func parseZoneUS(raw string, c_names chan string) {
-	bits := split_ws.Split(strings.ToLower(raw), -1)
+	bits := utils.Split_WS.Split(strings.ToLower(raw), -1)
 	if len(bits) != 4 {
 		return
 	}
@@ -193,7 +187,7 @@ func parseZoneSK(raw string, c_names chan string) {
 }
 
 func parseZoneCZDS(raw string, c_names chan string) {
-	bits := split_ws.Split(strings.ToLower(raw), -1)
+	bits := utils.Split_WS.Split(strings.ToLower(raw), -1)
 	if len(bits) != 5 {
 		return
 	}
@@ -329,7 +323,14 @@ func main() {
 	os.Setenv("LC_ALL", "C")
 
 	flag.Usage = func() { usage() }
+	version := flag.Bool("version", false, "Show the version and build timestamp")
+
 	flag.Parse()
+
+	if *version {
+		utils.PrintVersion()
+		os.Exit(0)
+	}
 
 	// Progress tracker
 	quit := make(chan int)

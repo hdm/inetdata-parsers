@@ -7,7 +7,6 @@ import (
 	"github.com/edmonds/golang-mtbl"
 	"github.com/hdm/inetdata-parsers/utils"
 	"os"
-	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -18,10 +17,6 @@ import (
 const MERGE_MODE_COMBINE = 0
 const MERGE_MODE_FIRST = 1
 const MERGE_MODE_LAST = 2
-
-var match_ipv6 = regexp.MustCompile(`^((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|((:[0-9A-Fa-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|((:[0-9A-Fa-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|((:[0-9A-Fa-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|((:[0-9A-Fa-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|((:[0-9A-Fa-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))(%.+)?$`)
-
-var match_ipv4 = regexp.MustCompile(`^(?:(?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})[.](?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})[.](?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})[.](?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2}))$`)
 
 var merge_mode = MERGE_MODE_COMBINE
 
@@ -191,7 +186,7 @@ func inputParser(d chan string, c chan NewRecord) {
 		}
 
 		// Reverse the key unless its an IP address
-		if !(match_ipv4.Match([]byte(name)) || match_ipv6.Match([]byte(name))) {
+		if !(utils.Match_IPv4.Match([]byte(name)) || utils.Match_IPv6.Match([]byte(name))) {
 			name = utils.ReverseKey(name)
 		}
 
@@ -211,8 +206,14 @@ func main() {
 	sort_tmp := flag.String("t", "", "The temporary directory to use for the sorting phase")
 	sort_mem := flag.Uint64("m", 1024, "The maximum amount of memory to use, in megabytes, for the sorting phase, per output file")
 	selected_merge_mode := flag.String("M", "combine", "The merge mode: combine, first, or last")
+	version := flag.Bool("version", false, "Show the version and build timestamp")
 
 	flag.Parse()
+
+	if *version {
+		utils.PrintVersion()
+		os.Exit(0)
+	}
 
 	if len(flag.Args()) != 1 {
 		usage()
@@ -242,7 +243,7 @@ func main() {
 		sort_opt.TempDir = *sort_tmp
 	}
 
-	compression_alg, ok := compression_types[*compression]
+	compression_alg, ok := utils.MTBLCompressionTypes[*compression]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "[-] Invalid compression algorithm: %s\n", *compression)
 		os.Exit(1)
