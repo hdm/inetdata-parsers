@@ -22,14 +22,15 @@ Load the profile settings:
 $ source ~/.bashrc
 ```
 
-Run the build script:
+Clone this repository into the GOPATH:
 ```
-$ ./build.sh
+$ go get github.com/hdm/inetdata-parsers
 ```
 
 ### Install
 ```
-$ sudo cp bin/* /usr/local/bin/
+$ cd $GOPATH/src/hdm/inetdata-parsers/
+$ make
 ```
 
 
