@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -208,6 +207,11 @@ func LookupOrgNets(org string) ([]string, error) {
 		return handles, err
 	}
 
+	// No network handles associated with this organization
+	if strings.Contains(string(content), "No related resources were found for the handle provided") {
+		return handles, nil
+	}
+
 	var nets ARIN_OrgNets
 
 	if err := json.Unmarshal(content, &nets); err == nil {
@@ -281,15 +285,15 @@ func main() {
 
 	handles, he := LookupOrgNets(org)
 	if he != nil {
-		log.Fatal("Error: ", he)
+		fmt.Fprintf(os.Stderr, "Could not list network handles: %s", he.Error())
 		os.Exit(1)
 	}
 
 	for i := range handles {
 		cidrs, e := LookupNetCidrs(handles[i])
 		if e != nil {
-			log.Fatal("Error: ", e)
-			os.Exit(1)
+			fmt.Fprintf(os.Stderr, "Could not list CIDRs for %s: %s", handles[i], he.Error())
+			continue
 		}
 		fmt.Println(strings.Join(cidrs, "\n"))
 	}
