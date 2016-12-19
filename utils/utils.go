@@ -30,8 +30,8 @@ func PrintVersion() {
 }
 
 func ReverseKey(s string) string {
-	b := make([]byte, len(s))
-	var j int = len(s) - 1
+	b := []byte(s)
+	j := len(s) / 2
 	for i := 0; i <= j; i++ {
 		b[j-i] = s[i]
 	}
