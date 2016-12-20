@@ -93,7 +93,7 @@ func UInt_to_IPv4(ipi uint32) string {
 	return ip.String()
 }
 
-func IPRange2CIDRs(s_ip string, e_ip string) ([]string, error) {
+func IPv4Range2CIDRs(s_ip string, e_ip string) ([]string, error) {
 
 	s_i, s_e := IPv4_to_UInt(s_ip)
 	if s_e != nil {
@@ -109,10 +109,10 @@ func IPRange2CIDRs(s_ip string, e_ip string) ([]string, error) {
 		return []string{}, errors.New("Start address is bigger than end address")
 	}
 
-	return IPUIntRange2CIDRs(s_i, e_i), nil
+	return IPv4UIntRange2CIDRs(s_i, e_i), nil
 }
 
-func IPUIntRange2CIDRs(s_i uint32, e_i uint32) []string {
+func IPv4UIntRange2CIDRs(s_i uint32, e_i uint32) []string {
 	cidrs := []string{}
 
 	// Ranges are inclusive
@@ -141,7 +141,7 @@ func IPUIntRange2CIDRs(s_i uint32, e_i uint32) []string {
 		s_i = s_i + mask_size
 
 		// Look for additional blocks
-		new_cidrs := IPUIntRange2CIDRs(s_i, e_i)
+		new_cidrs := IPv4UIntRange2CIDRs(s_i, e_i)
 
 		// Merge those blocks into out results
 		for x := range new_cidrs {
