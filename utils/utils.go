@@ -3,11 +3,10 @@ package utils
 import (
 	"bufio"
 	"fmt"
+	"github.com/edmonds/golang-mtbl"
 	"io"
 	"os"
 	"regexp"
-
-	"github.com/edmonds/golang-mtbl"
 )
 
 var Version string = "0.0.1"
@@ -31,10 +30,10 @@ func PrintVersion() {
 }
 
 func ReverseKey(s string) string {
-	b := []byte(s)
-	j := len(s) / 2
+	b := make([]byte, len(s))
+	var j int = len(s) - 1
 	for i := 0; i <= j; i++ {
-		b[i], b[len(b)-1-i] = b[len(b)-1-i], b[i]
+		b[j-i] = s[i]
 	}
 	return string(b)
 }
