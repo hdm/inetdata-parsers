@@ -307,8 +307,6 @@ func searchCIDR(m *mtbl.Merger, cidr string) {
 			}
 		}
 	}
-
-	fmt.Fprintf(os.Stderr, "Final: [%s] %s\n", cidr, ip_prefix)
 }
 
 func main() {
