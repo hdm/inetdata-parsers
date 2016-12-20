@@ -65,8 +65,8 @@ type ARIN_Nets struct {
 		Name struct {
 			Value string `json:"$"`
 		} `json:"name"`
-		NetBlocks []struct {
-			NetBlock struct {
+		NetBlocks struct {
+			NetBlock []struct {
 				CidrLength struct {
 					Value string `json:"$"`
 				} `json:"cidrLength"`
@@ -259,8 +259,8 @@ func LookupNetCidrs(handle string) ([]string, error) {
 	var nets ARIN_Nets
 
 	if err := json.Unmarshal(content, &nets); err == nil {
-		for i := range nets.Net.NetBlocks {
-			cidrs = append(cidrs, fmt.Sprintf("%s/%s", nets.Net.NetBlocks[i].NetBlock.StartAddress.Value, nets.Net.NetBlocks[i].NetBlock.CidrLength.Value))
+		for i := range nets.Net.NetBlocks.NetBlock {
+			cidrs = append(cidrs, fmt.Sprintf("%s/%s", nets.Net.NetBlocks.NetBlock[i].StartAddress.Value, nets.Net.NetBlocks.NetBlock[i].CidrLength.Value))
 		}
 	} else {
 		// Try to decode as a single-block network
@@ -283,16 +283,16 @@ func main() {
 
 	org := os.Args[1]
 
-	handles, he := LookupOrgNets(org)
-	if he != nil {
-		fmt.Fprintf(os.Stderr, "Could not list network handles: %s", he.Error())
+	handles, e := LookupOrgNets(org)
+	if e != nil {
+		fmt.Fprintf(os.Stderr, "Could not list network handles: %s", e.Error())
 		os.Exit(1)
 	}
 
 	for i := range handles {
 		cidrs, e := LookupNetCidrs(handles[i])
 		if e != nil {
-			fmt.Fprintf(os.Stderr, "Could not list CIDRs for %s: %s", handles[i], he.Error())
+			fmt.Fprintf(os.Stderr, "Could not list CIDRs for %s: %s", handles[i], e.Error())
 			continue
 		}
 		fmt.Println(strings.Join(cidrs, "\n"))
