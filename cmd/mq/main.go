@@ -242,7 +242,7 @@ func searchCIDR(m *mtbl.Merger, cidr string) {
 	// Parse CIDR into base address + mask
 	ip, net, err := net.ParseCIDR(cidr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Invalid CIDR %s: %s", cidr, err.Error())
+		fmt.Fprintf(os.Stderr, "Invalid CIDR %s: %s\n", cidr, err.Error())
 		return
 	}
 
@@ -255,7 +255,7 @@ func searchCIDR(m *mtbl.Merger, cidr string) {
 
 	net_base, err := utils.IPv4_to_UInt(net.IP.String())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Invalid IPv4 Address %s: %s", ip.String(), err.Error())
+		fmt.Fprintf(os.Stderr, "Invalid IPv4 Address %s: %s\n", ip.String(), err.Error())
 		return
 	}
 
