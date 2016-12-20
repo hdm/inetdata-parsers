@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -64,26 +65,71 @@ func findPaths(args []string) []string {
 	return paths
 }
 
-// TODO: Rework to handle [][]string merges
+// Handles json formats like: {"k1": "val1"} and [ ['k1', 'v1'] ]
 func mergeFunc(key []byte, val0 []byte, val1 []byte) (mergedVal []byte) {
+
+	if bytes.Compare(val0, val1) == 0 {
+		return val0
+	}
+
+	// Try to merge as a map[string]interface{}
 	var v0, v1 map[string]interface{}
 
-	if e := json.Unmarshal(val0, &v0); e != nil {
-		return val1
+	if e := json.Unmarshal(val0, &v0); e == nil {
+		// Looks like a map[string]interface{}
+
+		// Try to unmarshal the second value the same way
+		if e := json.Unmarshal(val1, &v1); e != nil {
+			// Second value was not equivalent, return first value
+			return val0
+		}
+
+		m := mergemap.Merge(v0, v1)
+		d, e := json.Marshal(m)
+		if e != nil {
+			fmt.Fprintf(os.Stderr, "JSON merge error: %s -> %s + %s: %s\n", string(key), string(val0), string(val1), e.Error())
+			return val0
+		}
+
+		return d
 	}
 
-	if e := json.Unmarshal(val1, &v1); e != nil {
-		return val0
+	// Try to merge as a [][]string
+	var a0, a1 [][]string
+
+	if e := json.Unmarshal(val0, &a0); e == nil {
+		// Looks like a [][]string
+
+		// Try to unmarshal the second value the same way
+		if e := json.Unmarshal(val1, &a1); e != nil {
+			// Couldn't unmarshal the second value, return val0
+			return val0
+		}
+
+		unique := map[string]bool{}
+		m := [][]string{}
+
+		for i := range a0 {
+			unique[strings.Join(a0[i], "\x00")] = true
+		}
+		for i := range a1 {
+			unique[strings.Join(a1[i], "\x00")] = true
+		}
+		for i := range unique {
+			m = append(m, strings.SplitN(i, "\x00", 2))
+		}
+
+		d, e := json.Marshal(m)
+		if e != nil {
+			fmt.Fprintf(os.Stderr, "JSON merge error: %s -> %s + %s: %s\n", string(key), string(val0), string(val1), e.Error())
+			return val0
+		}
+
+		return d
 	}
 
-	m := mergemap.Merge(v0, v1)
-	d, e := json.Marshal(m)
-	if e != nil {
-		fmt.Fprintf(os.Stderr, "JSON merge error: %v -> %v + %v\n", e, val0, val1)
-		return val0
-	}
-
-	return d
+	// Give up and return the first value
+	return val0
 }
 
 func writeOutput(key_bytes []byte, val_bytes []byte) {
@@ -177,6 +223,20 @@ func searchDomain(m *mtbl.Merger, domain string) {
 	}
 }
 
+func searchPrefixIPv4(m *mtbl.Merger, prefix string) {
+	it := mtbl.IterPrefix(m, []byte(prefix))
+	for {
+		key_bytes, val_bytes, ok := it.Next()
+		if !ok {
+			break
+		}
+
+		if utils.Match_IPv4.Match(key_bytes) {
+			writeOutput(key_bytes, val_bytes)
+		}
+	}
+}
+
 func searchCIDR(m *mtbl.Merger, cidr string) {
 
 	// Parse CIDR into base address + mask
@@ -207,23 +267,29 @@ func searchCIDR(m *mtbl.Merger, cidr string) {
 	cur_base := net_base
 	end_base := net_base + net_size
 
-	// TODO: Special case /16s to speed up
-	if mask_ones == 16 {
-		ip_prefix := strings.Join(strings.SplitN(utils.UInt_to_IPv4(cur_base), ".", 4)[0:2], ".") + "."
-		searchPrefix(m, ip_prefix)
-		return
+	var ndots uint32 = 3
+	var block_size uint32 = 256
+
+	// Handle massive network blocks
+	if mask_ones <= 8 {
+		ndots = 1
+		block_size = 256 * 256 * 256
+	} else if mask_ones <= 16 {
+		ndots = 2
+		block_size = 256 * 256
 	}
 
-	for ; end_base-cur_base >= 256; cur_base += 256 {
-		ip_prefix := strings.Join(strings.SplitN(utils.UInt_to_IPv4(cur_base), ".", 4)[0:3], ".") + "."
-		searchPrefix(m, ip_prefix)
+	// Iterate by block size
+	for ; end_base-cur_base >= block_size; cur_base += block_size {
+		ip_prefix := strings.Join(strings.SplitN(utils.UInt_to_IPv4(cur_base), ".", 4)[0:ndots], ".") + "."
+		searchPrefixIPv4(m, ip_prefix)
 	}
 
 	if end_base-cur_base == 0 {
 		return
 	}
 
-	// One final prefix search
+	// Handle any leftovers by looking up a full /24 and ignoring stuff outside our range
 	ip_prefix := strings.Join(strings.SplitN(utils.UInt_to_IPv4(cur_base), ".", 4)[0:3], ".") + "."
 
 	it := mtbl.IterPrefix(m, []byte(ip_prefix))
@@ -233,10 +299,12 @@ func searchCIDR(m *mtbl.Merger, cidr string) {
 			break
 		}
 
-		// Only print values in our CIDR
+		// Only print results that are valid IPV4 addresses within our CIDR range
 		cur_val, _ := utils.IPv4_to_UInt(string(key_bytes))
 		if cur_val >= cur_base && cur_val <= end_base {
-			writeOutput(key_bytes, val_bytes)
+			if utils.Match_IPv4.Match(key_bytes) {
+				writeOutput(key_bytes, val_bytes)
+			}
 		}
 	}
 
