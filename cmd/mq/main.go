@@ -249,12 +249,12 @@ func searchCIDR(m *mtbl.Merger, cidr string) {
 	// Verify IPv4 for now
 	ip4 := net.IP.To4()
 	if ip4 == nil {
-		fmt.Fprintf(os.Stderr, "Invalid IPv4 CIDR %s: %s", cidr, err.Error())
+		fmt.Fprintf(os.Stderr, "Invalid IPv4 CIDR %s\n", cidr)
 		return
 	}
 
-	net_base, ip_err := utils.IPv4_to_UInt(net.IP.String())
-	if ip_err != nil {
+	net_base, err := utils.IPv4_to_UInt(net.IP.String())
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Invalid IPv4 Address %s: %s", ip.String(), err.Error())
 		return
 	}
