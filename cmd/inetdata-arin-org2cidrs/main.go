@@ -7,8 +7,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 )
+
+var IsCustomerHandle = regexp.MustCompile(`^C[A-F0-9]{8}$`)
 
 type ARIN_OrgNets struct {
 	Nets struct {
@@ -186,7 +189,17 @@ func LookupOrgNets(org string) ([]string, error) {
 	handles := []string{}
 
 	safe_org := url.QueryEscape(org)
-	u := fmt.Sprintf("http://whois.arin.net/rest/org/%s/nets", safe_org)
+
+	u := ""
+
+	// Organizations are split into Customers and Non-Customers, which
+	// determines which API endpoint to use. Fortunately we can tell
+	// which one is what based on the naming convention.
+	if IsCustomerHandle.Match([]byte(org)) {
+		u = fmt.Sprintf("http://whois.arin.net/rest/customer/%s/nets", safe_org)
+	} else {
+		u = fmt.Sprintf("http://whois.arin.net/rest/org/%s/nets", safe_org)
+	}
 
 	req, err := http.NewRequest("GET", u, nil)
 	if err != nil {
