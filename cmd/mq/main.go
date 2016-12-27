@@ -1,13 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/edmonds/golang-mtbl"
 	"github.com/hdm/inetdata-parsers/utils"
-	"github.com/peterbourgon/mergemap"
 	"io/ioutil"
 	"math"
 	"net"
@@ -65,74 +63,6 @@ func findPaths(args []string) []string {
 	return paths
 }
 
-// Handles json formats like: {"k1": "val1"} and [ ['k1', 'v1'] ]
-// TODO: Handle Censys format
-func mergeFunc(key []byte, val0 []byte, val1 []byte) (mergedVal []byte) {
-
-	if bytes.Compare(val0, val1) == 0 {
-		return val0
-	}
-
-	// Try to merge as a map[string]interface{}
-	var v0, v1 map[string]interface{}
-
-	if e := json.Unmarshal(val0, &v0); e == nil {
-		// Looks like a map[string]interface{}
-
-		// Try to unmarshal the second value the same way
-		if e := json.Unmarshal(val1, &v1); e != nil {
-			// Second value was not equivalent, return first value
-			return val0
-		}
-
-		m := mergemap.Merge(v0, v1)
-		d, e := json.Marshal(m)
-		if e != nil {
-			fmt.Fprintf(os.Stderr, "JSON merge error: %s -> %s + %s: %s\n", string(key), string(val0), string(val1), e.Error())
-			return val0
-		}
-
-		return d
-	}
-
-	// Try to merge as a [][]string
-	var a0, a1 [][]string
-
-	if e := json.Unmarshal(val0, &a0); e == nil {
-		// Looks like a [][]string
-
-		// Try to unmarshal the second value the same way
-		if e := json.Unmarshal(val1, &a1); e != nil {
-			// Couldn't unmarshal the second value, return val0
-			return val0
-		}
-
-		unique := map[string]bool{}
-		m := [][]string{}
-
-		for i := range a0 {
-			unique[strings.Join(a0[i], "\x00")] = true
-		}
-		for i := range a1 {
-			unique[strings.Join(a1[i], "\x00")] = true
-		}
-		for i := range unique {
-			m = append(m, strings.SplitN(i, "\x00", 2))
-		}
-
-		d, e := json.Marshal(m)
-		if e != nil {
-			fmt.Fprintf(os.Stderr, "JSON merge error: %s -> %s + %s: %s\n", string(key), string(val0), string(val1), e.Error())
-			return val0
-		}
-
-		return d
-	}
-
-	// Give up and return the first value
-	return val0
-}
-
 func writeOutput(key_bytes []byte, val_bytes []byte) {
 
 	key := string(key_bytes)
@@ -178,8 +108,8 @@ func writeOutput(key_bytes []byte, val_bytes []byte) {
 	}
 }
 
-func searchPrefix(m *mtbl.Merger, prefix string) {
-	it := mtbl.IterPrefix(m, []byte(prefix))
+func searchPrefix(r *mtbl.Reader, prefix string) {
+	it := mtbl.IterPrefix(r, []byte(prefix))
 	for {
 		key_bytes, val_bytes, ok := it.Next()
 		if !ok {
@@ -189,8 +119,8 @@ func searchPrefix(m *mtbl.Merger, prefix string) {
 	}
 }
 
-func searchAll(m *mtbl.Merger) {
-	it := mtbl.IterAll(m)
+func searchAll(r *mtbl.Reader) {
+	it := mtbl.IterAll(r)
 	for {
 		key_bytes, val_bytes, ok := it.Next()
 		if !ok {
@@ -200,21 +130,21 @@ func searchAll(m *mtbl.Merger) {
 	}
 }
 
-func searchDomain(m *mtbl.Merger, domain string) {
+func searchDomain(r *mtbl.Reader, domain string) {
 	rdomain := []byte(utils.ReverseKey(domain))
 
 	// Domain searches always use reversed keys
 	*rev_key = true
 
 	// Exact match: "example.com"
-	exact, found := mtbl.Get(m, rdomain)
+	exact, found := mtbl.Get(r, []byte(string(rdomain)))
 	if found {
-		writeOutput([]byte(rdomain), exact)
+		writeOutput(rdomain, exact)
 	}
 
 	// Subdomain matches: ".example.com"
 	dot_domain := append(rdomain, '.')
-	it := mtbl.IterPrefix(m, dot_domain)
+	it := mtbl.IterPrefix(r, dot_domain)
 	for {
 		key_bytes, val_bytes, ok := it.Next()
 		if !ok {
@@ -224,8 +154,8 @@ func searchDomain(m *mtbl.Merger, domain string) {
 	}
 }
 
-func searchPrefixIPv4(m *mtbl.Merger, prefix string) {
-	it := mtbl.IterPrefix(m, []byte(prefix))
+func searchPrefixIPv4(r *mtbl.Reader, prefix string) {
+	it := mtbl.IterPrefix(r, []byte(prefix))
 	for {
 		key_bytes, val_bytes, ok := it.Next()
 		if !ok {
@@ -238,7 +168,16 @@ func searchPrefixIPv4(m *mtbl.Merger, prefix string) {
 	}
 }
 
-func searchCIDR(m *mtbl.Merger, cidr string) {
+func searchCIDR(r *mtbl.Reader, cidr string) {
+
+	// We may receive bare IP addresses, not CIDRs sometimes
+	if ! strings.Contains(cidr, "/") {
+		if strings.Contains(cidr, ":") {
+			cidr = cidr + "/128"
+		} else {
+			cidr = cidr + "/32"
+		}
+	}
 
 	// Parse CIDR into base address + mask
 	ip, net, err := net.ParseCIDR(cidr)
@@ -283,7 +222,7 @@ func searchCIDR(m *mtbl.Merger, cidr string) {
 	// Iterate by block size
 	for ; end_base-cur_base >= block_size; cur_base += block_size {
 		ip_prefix := strings.Join(strings.SplitN(utils.UInt_to_IPv4(cur_base), ".", 4)[0:ndots], ".") + "."
-		searchPrefixIPv4(m, ip_prefix)
+		searchPrefixIPv4(r, ip_prefix)
 	}
 
 	if end_base-cur_base == 0 {
@@ -293,7 +232,7 @@ func searchCIDR(m *mtbl.Merger, cidr string) {
 	// Handle any leftovers by looking up a full /24 and ignoring stuff outside our range
 	ip_prefix := strings.Join(strings.SplitN(utils.UInt_to_IPv4(cur_base), ".", 4)[0:3], ".") + "."
 
-	it := mtbl.IterPrefix(m, []byte(ip_prefix))
+	it := mtbl.IterPrefix(r, []byte(ip_prefix))
 	for {
 		key_bytes, val_bytes, ok := it.Next()
 		if !ok {
@@ -366,41 +305,39 @@ func main() {
 
 	paths := findPaths(flag.Args())
 
-	m := mtbl.MergerInit(&mtbl.MergerOptions{Merge: mergeFunc})
-	defer m.Destroy()
-
 	for i := range paths {
+
 		path := paths[i]
 
 		r, e := mtbl.ReaderInit(path, &mtbl.ReaderOptions{VerifyChecksums: true})
 		defer r.Destroy()
+
 		if e != nil {
 			fmt.Fprintf(os.Stderr, "Error reading %s: %s\n", path, e)
 			os.Exit(1)
 		}
-		m.AddSource(r)
-	}
 
-	if len(*domain) > 0 {
-		searchDomain(m, *domain)
-		return
-	}
+		if len(*domain) > 0 {
+			searchDomain(r, *domain)
+			continue
+		}
 
-	if len(*cidr) > 0 {
-		searchCIDR(m, *cidr)
-		return
-	}
+		if len(*cidr) > 0 {
+			searchCIDR(r, *cidr)
+			continue
+		}
 
-	if len(*prefix) > 0 {
-		searchPrefix(m, *prefix)
-		return
-	}
+		if len(*prefix) > 0 {
+			searchPrefix(r, *prefix)
+			continue
+		}
 
-	if len(*rev_prefix) > 0 {
-		p := utils.ReverseKey(*rev_prefix)
-		searchPrefix(m, p)
-		return
-	}
+		if len(*rev_prefix) > 0 {
+			p := utils.ReverseKey(*rev_prefix)
+			searchPrefix(r, p)
+			continue
+		}
 
-	searchAll(m)
+		searchAll(r)
+	}
 }
