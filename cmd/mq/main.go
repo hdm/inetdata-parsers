@@ -66,6 +66,7 @@ func findPaths(args []string) []string {
 }
 
 // Handles json formats like: {"k1": "val1"} and [ ['k1', 'v1'] ]
+// TODO: Handle Censys format
 func mergeFunc(key []byte, val0 []byte, val1 []byte) (mergedVal []byte) {
 
 	if bytes.Compare(val0, val1) == 0 {
