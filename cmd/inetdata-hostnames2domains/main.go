@@ -30,7 +30,6 @@ func showProgress(quit chan int) {
 	for {
 		select {
 		case <-quit:
-			fmt.Fprintf(os.Stderr, "[*] Complete\n")
 			return
 		case <-time.After(time.Second * 1):
 			icount := atomic.LoadInt64(&input_count)

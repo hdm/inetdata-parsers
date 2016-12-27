@@ -170,6 +170,10 @@ func searchPrefixIPv4(r *mtbl.Reader, prefix string) {
 
 func searchCIDR(r *mtbl.Reader, cidr string) {
 
+	if len(cidr) == 0 {
+		return
+	}
+
 	// We may receive bare IP addresses, not CIDRs sometimes
 	if !strings.Contains(cidr, "/") {
 		if strings.Contains(cidr, ":") {
