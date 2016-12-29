@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"github.com/hdm/inetdata-parsers/utils"
 	"os"
+	"regexp"
 	"runtime"
 	"strings"
-	"regexp"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -57,8 +57,8 @@ func showProgress(quit chan int) {
 func inputParser(c <-chan string) {
 
 	suffixes := make(map[string]bool, len(Public_Suffixes))
-	for i := range(Public_Suffixes) {
-		suffixes[ Public_Suffixes[i] ] = true
+	for i := range Public_Suffixes {
+		suffixes[Public_Suffixes[i]] = true
 	}
 
 	digits := regexp.MustCompile(`^\d+\.`)
