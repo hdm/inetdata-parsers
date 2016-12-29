@@ -7,6 +7,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"regexp"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -55,6 +56,13 @@ func showProgress(quit chan int) {
 
 func inputParser(c <-chan string) {
 
+	suffixes := make(map[string]bool, len(Public_Suffixes))
+	for i := range(Public_Suffixes) {
+		suffixes[ Public_Suffixes[i] ] = true
+	}
+
+	digits := regexp.MustCompile(`^\d+\.`)
+
 	for r := range c {
 
 		raw := strings.TrimSpace(r)
@@ -75,6 +83,17 @@ func inputParser(c <-chan string) {
 
 		for i := 1; i < len(bits)-1; i++ {
 			name := strings.Join(bits[i:], ".")
+
+			// Skip domains that are public suffixes
+			if _, found := suffixes[name]; found {
+				continue
+			}
+
+			// Skip domains that are entirely numerical
+			if digits.Match([]byte(name)) {
+				continue
+			}
+
 			fmt.Println(name)
 			atomic.AddInt64(&output_count, 1)
 		}
