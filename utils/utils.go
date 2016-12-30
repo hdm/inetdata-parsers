@@ -9,8 +9,6 @@ import (
 	"regexp"
 )
 
-var Version string = "0.0.2"
-
 var MTBLCompressionTypes = map[string]int{
 	"none":   mtbl.COMPRESSION_NONE,
 	"snappy": mtbl.COMPRESSION_SNAPPY,
