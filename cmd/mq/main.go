@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -136,21 +137,18 @@ func searchDomain(r *mtbl.Reader, domain string) {
 	// Domain searches always use reversed keys
 	*rev_key = true
 
-	// Exact match: "example.com"
-	exact, found := mtbl.Get(r, []byte(string(rdomain)))
-	if found {
-		writeOutput(rdomain, exact)
-	}
-
-	// Subdomain matches: ".example.com"
-	dot_domain := append(rdomain, '.')
-	it := mtbl.IterPrefix(r, dot_domain)
+	dot_rdomain := append(rdomain, '.')
+	it := mtbl.IterPrefix(r, rdomain)
 	for {
 		key_bytes, val_bytes, ok := it.Next()
 		if !ok {
 			break
 		}
-		writeOutput(key_bytes, val_bytes)
+
+		if bytes.Compare(key_bytes, rdomain) == 0 ||
+			bytes.Compare(key_bytes[0:len(dot_rdomain)], dot_rdomain) == 0 {
+			writeOutput(key_bytes, val_bytes)
+		}
 	}
 }
 
