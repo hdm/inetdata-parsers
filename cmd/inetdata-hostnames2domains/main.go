@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/hdm/inetdata-parsers/utils"
+	"github.com/hdm/inetdata-parsers"
 	"os"
 	"regexp"
 	"runtime"
@@ -112,7 +112,7 @@ func main() {
 	flag.Parse()
 
 	if *version {
-		utils.PrintVersion()
+		inetdata.PrintVersion()
 		os.Exit(0)
 	}
 
@@ -128,7 +128,7 @@ func main() {
 	wg.Add(1)
 
 	// Reader closers c_inp on completion
-	e := utils.ReadLines(os.Stdin, c_inp)
+	e := inetdata.ReadLines(os.Stdin, c_inp)
 	if e != nil {
 		fmt.Fprintf(os.Stderr, "Error reading input: %s\n", e)
 	}

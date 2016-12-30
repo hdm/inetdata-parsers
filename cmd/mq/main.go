@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/edmonds/golang-mtbl"
-	"github.com/hdm/inetdata-parsers/utils"
+	"github.com/hdm/inetdata-parsers"
 	"io/ioutil"
 	"math"
 	"net"
@@ -69,7 +69,7 @@ func writeOutput(key_bytes []byte, val_bytes []byte) {
 	val := string(val_bytes)
 
 	if *rev_key {
-		key = utils.ReverseKey(key)
+		key = inetdata.ReverseKey(key)
 	}
 
 	if *as_json {
@@ -131,7 +131,7 @@ func searchAll(r *mtbl.Reader) {
 }
 
 func searchDomain(r *mtbl.Reader, domain string) {
-	rdomain := []byte(utils.ReverseKey(domain))
+	rdomain := []byte(inetdata.ReverseKey(domain))
 
 	// Domain searches always use reversed keys
 	*rev_key = true
@@ -162,7 +162,7 @@ func searchPrefixIPv4(r *mtbl.Reader, prefix string) {
 			break
 		}
 
-		if utils.Match_IPv4.Match(key_bytes) {
+		if inetdata.Match_IPv4.Match(key_bytes) {
 			writeOutput(key_bytes, val_bytes)
 		}
 	}
@@ -197,7 +197,7 @@ func searchCIDR(r *mtbl.Reader, cidr string) {
 		return
 	}
 
-	net_base, err := utils.IPv4_to_UInt(net.IP.String())
+	net_base, err := inetdata.IPv4_to_UInt(net.IP.String())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Invalid IPv4 Address %s: %s\n", ip.String(), err.Error())
 		return
@@ -225,7 +225,7 @@ func searchCIDR(r *mtbl.Reader, cidr string) {
 
 	// Iterate by block size
 	for ; end_base-cur_base >= block_size; cur_base += block_size {
-		ip_prefix := strings.Join(strings.SplitN(utils.UInt_to_IPv4(cur_base), ".", 4)[0:ndots], ".") + "."
+		ip_prefix := strings.Join(strings.SplitN(inetdata.UInt_to_IPv4(cur_base), ".", 4)[0:ndots], ".") + "."
 		searchPrefixIPv4(r, ip_prefix)
 	}
 
@@ -234,7 +234,7 @@ func searchCIDR(r *mtbl.Reader, cidr string) {
 	}
 
 	// Handle any leftovers by looking up a full /24 and ignoring stuff outside our range
-	ip_prefix := strings.Join(strings.SplitN(utils.UInt_to_IPv4(cur_base), ".", 4)[0:3], ".") + "."
+	ip_prefix := strings.Join(strings.SplitN(inetdata.UInt_to_IPv4(cur_base), ".", 4)[0:3], ".") + "."
 
 	it := mtbl.IterPrefix(r, []byte(ip_prefix))
 	for {
@@ -244,9 +244,9 @@ func searchCIDR(r *mtbl.Reader, cidr string) {
 		}
 
 		// Only print results that are valid IPV4 addresses within our CIDR range
-		cur_val, _ := utils.IPv4_to_UInt(string(key_bytes))
+		cur_val, _ := inetdata.IPv4_to_UInt(string(key_bytes))
 		if cur_val >= cur_base && cur_val <= end_base {
-			if utils.Match_IPv4.Match(key_bytes) {
+			if inetdata.Match_IPv4.Match(key_bytes) {
 				writeOutput(key_bytes, val_bytes)
 			}
 		}
@@ -274,7 +274,7 @@ func main() {
 	flag.Parse()
 
 	if *version {
-		utils.PrintVersion()
+		inetdata.PrintVersion()
 		os.Exit(0)
 	}
 
@@ -337,7 +337,7 @@ func main() {
 		}
 
 		if len(*rev_prefix) > 0 {
-			p := utils.ReverseKey(*rev_prefix)
+			p := inetdata.ReverseKey(*rev_prefix)
 			searchPrefix(r, p)
 			continue
 		}

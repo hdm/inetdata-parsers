@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/hdm/inetdata-parsers/utils"
+	"github.com/hdm/inetdata-parsers"
 	"os"
 	"regexp"
 	"runtime"
@@ -94,12 +94,12 @@ func writeRecord(c_names chan string, name string, rtype string, value string) {
 		c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, value)
 
 	case "a":
-		if utils.Match_IPv4.Match([]byte(value)) {
+		if inetdata.Match_IPv4.Match([]byte(value)) {
 			c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, value)
 		}
 
 	case "aaaa":
-		if utils.Match_IPv6.Match([]byte(value)) {
+		if inetdata.Match_IPv6.Match([]byte(value)) {
 			c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, value)
 		}
 	}
@@ -112,7 +112,7 @@ func normalizeName(name string) string {
 	}
 
 	// Leave IP addresses alone
-	if utils.Match_IPv4.Match([]byte(name)) || utils.Match_IPv6.Match([]byte(name)) {
+	if inetdata.Match_IPv4.Match([]byte(name)) || inetdata.Match_IPv6.Match([]byte(name)) {
 		return name
 	}
 
@@ -127,7 +127,7 @@ func normalizeName(name string) string {
 }
 
 func parseZoneCOM(raw string, c_names chan string) {
-	bits := utils.Split_WS.Split(strings.ToLower(raw), -1)
+	bits := inetdata.Split_WS.Split(strings.ToLower(raw), -1)
 	if len(bits) != 3 {
 		return
 	}
@@ -137,7 +137,7 @@ func parseZoneCOM(raw string, c_names chan string) {
 }
 
 func parseZoneBIZ(raw string, c_names chan string) {
-	bits := utils.Split_WS.Split(strings.ToLower(raw), -1)
+	bits := inetdata.Split_WS.Split(strings.ToLower(raw), -1)
 	if len(bits) != 5 {
 		return
 	}
@@ -147,7 +147,7 @@ func parseZoneBIZ(raw string, c_names chan string) {
 }
 
 func parseZoneUS(raw string, c_names chan string) {
-	bits := utils.Split_WS.Split(strings.ToLower(raw), -1)
+	bits := inetdata.Split_WS.Split(strings.ToLower(raw), -1)
 	if len(bits) != 4 {
 		return
 	}
@@ -187,7 +187,7 @@ func parseZoneSK(raw string, c_names chan string) {
 }
 
 func parseZoneCZDS(raw string, c_names chan string) {
-	bits := utils.Split_WS.Split(strings.ToLower(raw), -1)
+	bits := inetdata.Split_WS.Split(strings.ToLower(raw), -1)
 	if len(bits) != 5 {
 		return
 	}
@@ -328,7 +328,7 @@ func main() {
 	flag.Parse()
 
 	if *version {
-		utils.PrintVersion()
+		inetdata.PrintVersion()
 		os.Exit(0)
 	}
 
@@ -346,7 +346,7 @@ func main() {
 	wg.Add(1)
 
 	// Reader closers c_inp on completion
-	e := utils.ReadLines(os.Stdin, c_inp)
+	e := inetdata.ReadLines(os.Stdin, c_inp)
 	if e != nil {
 		fmt.Fprintf(os.Stderr, "Error reading input: %s\n", e)
 	}

@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/edmonds/golang-mtbl"
-	"github.com/hdm/inetdata-parsers/utils"
+	"github.com/hdm/inetdata-parsers"
 	"os"
 	"runtime"
 	"strings"
@@ -186,8 +186,8 @@ func inputParser(d chan string, c chan NewRecord) {
 		}
 
 		// Reverse the key unless its an IP address
-		if !(utils.Match_IPv4.Match([]byte(name)) || utils.Match_IPv6.Match([]byte(name))) {
-			name = utils.ReverseKey(name)
+		if !(inetdata.Match_IPv4.Match([]byte(name)) || inetdata.Match_IPv6.Match([]byte(name))) {
+			name = inetdata.ReverseKey(name)
 		}
 
 		c <- NewRecord{Key: []byte(name), Val: json}
@@ -211,7 +211,7 @@ func main() {
 	flag.Parse()
 
 	if *version {
-		utils.PrintVersion()
+		inetdata.PrintVersion()
 		os.Exit(0)
 	}
 
@@ -243,7 +243,7 @@ func main() {
 		sort_opt.TempDir = *sort_tmp
 	}
 
-	compression_alg, ok := utils.MTBLCompressionTypes[*compression]
+	compression_alg, ok := inetdata.MTBLCompressionTypes[*compression]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "[-] Invalid compression algorithm: %s\n", *compression)
 		os.Exit(1)
@@ -272,7 +272,7 @@ func main() {
 	go showProgress(quit)
 
 	// Reader closes input on completion
-	e := utils.ReadLines(os.Stdin, p_ch)
+	e := inetdata.ReadLines(os.Stdin, p_ch)
 	if e != nil {
 		fmt.Fprintf(os.Stderr, "Error reading input: %s\n", e)
 	}

@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/hdm/inetdata-parsers/utils"
+	"github.com/hdm/inetdata-parsers"
 	"io"
 	"os"
 	"os/exec"
@@ -108,9 +108,9 @@ func inputParser(c chan string, c_names chan string, c_inverse chan string) {
 			value = bits[1]
 
 			// Determine the field type based on pattern
-			if utils.Match_IPv4.Match([]byte(name)) {
+			if inetdata.Match_IPv4.Match([]byte(name)) {
 				rtype = "a"
-			} else if utils.Match_IPv6.Match([]byte(name)) {
+			} else if inetdata.Match_IPv6.Match([]byte(name)) {
 				rtype = "aaaa"
 			} else {
 				fmt.Fprintf(os.Stderr, "[-] Unknown two-field format: %s\n", raw)
@@ -133,7 +133,7 @@ func inputParser(c chan string, c_names chan string, c_inverse chan string) {
 		switch rtype {
 		case "a":
 			// Skip invalid IPv4 records (TODO: verify logic)
-			if !(utils.Match_IPv4.Match([]byte(value)) || utils.Match_IPv4.Match([]byte(name))) {
+			if !(inetdata.Match_IPv4.Match([]byte(value)) || inetdata.Match_IPv4.Match([]byte(name))) {
 				continue
 			}
 			c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, value)
@@ -141,7 +141,7 @@ func inputParser(c chan string, c_names chan string, c_inverse chan string) {
 
 		case "aaaa":
 			// Skip invalid IPv6 records (TODO: verify logic)
-			if !(utils.Match_IPv6.Match([]byte(value)) || utils.Match_IPv6.Match([]byte(name))) {
+			if !(inetdata.Match_IPv6.Match([]byte(value)) || inetdata.Match_IPv6.Match([]byte(name))) {
 				continue
 			}
 			c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, value)
@@ -180,7 +180,7 @@ func main() {
 	flag.Parse()
 
 	if *version {
-		utils.PrintVersion()
+		inetdata.PrintVersion()
 		os.Exit(0)
 	}
 
@@ -340,7 +340,7 @@ func main() {
 	wg2.Add(2)
 
 	// Reader closes c_inp on completion
-	e := utils.ReadLines(os.Stdin, c_inp)
+	e := inetdata.ReadLines(os.Stdin, c_inp)
 	if e != nil {
 		fmt.Fprintf(os.Stderr, "Error reading input: %s\n", e)
 	}

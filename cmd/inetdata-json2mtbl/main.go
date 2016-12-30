@@ -6,7 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/edmonds/golang-mtbl"
-	"github.com/hdm/inetdata-parsers/utils"
+	"github.com/hdm/inetdata-parsers"
 	"github.com/peterbourgon/mergemap"
 	"os"
 	"runtime"
@@ -76,7 +76,7 @@ func main() {
 	flag.Parse()
 
 	if *version {
-		utils.PrintVersion()
+		inetdata.PrintVersion()
 		os.Exit(0)
 	}
 
@@ -111,7 +111,7 @@ func main() {
 		sort_opt.TempDir = *sort_tmp
 	}
 
-	compression_alg, ok := utils.MTBLCompressionTypes[*compression]
+	compression_alg, ok := inetdata.MTBLCompressionTypes[*compression]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "Invalid compression algorithm: %s\n", *compression)
 		os.Exit(1)
@@ -154,7 +154,7 @@ func main() {
 		kstr := kval.(string)
 
 		if *reverse_key {
-			kstr = utils.ReverseKey(kstr)
+			kstr = inetdata.ReverseKey(kstr)
 		}
 
 		if e := s.Add([]byte(kstr), []byte(raw)); e != nil {
