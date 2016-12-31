@@ -290,7 +290,7 @@ func LookupNetCidrs(handle string) ([]string, error) {
 func main() {
 
 	if len(os.Args) != 2 {
-		fmt.Println("Usage: inetdata-arin-org2nets <org-handle>\n")
+		fmt.Println("Usage: inetdata-arin-org2nets <org-handle>")
 		os.Exit(1)
 	}
 
