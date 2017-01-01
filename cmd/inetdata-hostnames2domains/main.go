@@ -56,10 +56,7 @@ func showProgress(quit chan int) {
 
 func inputParser(c <-chan string) {
 
-	suffixes := make(map[string]bool, len(Public_Suffixes))
-	for i := range Public_Suffixes {
-		suffixes[Public_Suffixes[i]] = true
-	}
+	suffixes := inetdata.PublicSuffixMap()
 
 	digits := regexp.MustCompile(`^\d+\.`)
 

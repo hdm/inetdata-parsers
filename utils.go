@@ -89,3 +89,11 @@ func ReadLines(input *os.File, out chan<- string) error {
 
 	return nil
 }
+
+func PublicSuffixMap() map[string]bool {
+	suffixes := make(map[string]bool, len(Public_Suffixes))
+	for i := range Public_Suffixes {
+		suffixes[Public_Suffixes[i]] = true
+	}
+	return suffixes
+}
