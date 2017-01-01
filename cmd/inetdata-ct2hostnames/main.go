@@ -155,12 +155,12 @@ func inputParser(c <-chan string, o chan<- string) {
 				strings.Contains(c.Subject.CommonName, ".") &&
 				!strings.Contains(c.Subject.CommonName, ":") &&
 				!strings.Contains(c.Subject.CommonName, " ") {
-				names[c.Subject.CommonName] = struct{}{}
+				names[strings.ToLower(c.Subject.CommonName)] = struct{}{}
 			}
 
 			for _, alt := range c.DNSNames {
 				if len(alt) > 0 {
-					names[alt] = struct{}{}
+					names[strings.ToLower(alt)] = struct{}{}
 				}
 			}
 
