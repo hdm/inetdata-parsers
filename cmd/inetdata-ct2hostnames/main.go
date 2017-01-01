@@ -92,82 +92,49 @@ func inputParser(c <-chan string, o chan<- string) {
 			continue
 		}
 
-		var chain []ct.ASN1Cert
+		var cert *x509.Certificate
+		var err error
 
 		switch leaf.TimestampedEntry.EntryType {
 		case ct.X509LogEntryType:
 
-			var certChain ct.CertificateChain
-
-			if rest, err := tls.Unmarshal(entry.ExtraData, &certChain); err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to unmarshal ExtraData: %v", err)
-				continue
-
-			} else if len(rest) > 0 {
-				fmt.Fprintf(os.Stderr, "Trailing data (%d bytes) after CertificateChain: %q", len(rest), rest)
+			cert, err = x509.ParseCertificate(leaf.TimestampedEntry.X509Entry.Data)
+			if err != nil && !strings.Contains(err.Error(), "NonFatalErrors:") {
+				fmt.Fprintf(os.Stderr, "Failed to parse cert: %s\n", err.Error())
 				continue
 			}
-
-			chain = certChain.Entries
 
 		case ct.PrecertLogEntryType:
 
-			var precertChain ct.PrecertChainEntry
-
-			if rest, err := tls.Unmarshal(entry.ExtraData, &precertChain); err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to unmarshal PrecertChainEntry: %v (%s)", err, r)
-				continue
-			} else if len(rest) > 0 {
-				fmt.Fprintf(os.Stderr, "Trailing data (%d bytes) after PrecertChainEntry: %q", len(rest), rest)
+			cert, err = x509.ParseTBSCertificate(leaf.TimestampedEntry.PrecertEntry.TBSCertificate)
+			if err != nil && !strings.Contains(err.Error(), "NonFatalErrors:") {
+				fmt.Fprintf(os.Stderr, "Failed to parse precert: %s\n", err.Error())
 				continue
 			}
-
-			chain = append(chain, precertChain.PreCertificate)
-			chain = append(chain, precertChain.CertificateChain...)
 
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown entry type: %v (%s)", leaf.TimestampedEntry.EntryType, r)
 			continue
 		}
 
-		if len(chain) == 0 {
-			fmt.Fprintf(os.Stderr, "Empty certificate chain: %s\n", r)
-			continue
-		}
-
 		// Valid input
 		atomic.AddInt64(&input_count, 1)
 
-		for i := range chain {
+		var names = make(map[string]struct{})
 
-			c, err := x509.ParseCertificate(chain[i].Data)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to parse cert: %s (%q)\n", err.Error(), chain[i].Data)
-				continue
+		if _, err := inetdata.PublicSuffixFind(cert.Subject.CommonName); err == nil {
+			names[strings.ToLower(cert.Subject.CommonName)] = struct{}{}
+		}
+
+		for _, alt := range cert.DNSNames {
+			if _, err := inetdata.PublicSuffixFind(alt); err == nil {
+				names[strings.ToLower(alt)] = struct{}{}
 			}
+		}
 
-			// Keep track of unique names across CN/SAN
-			var names = make(map[string]struct{})
-
-			// Look for CNs that are most likely hostnames
-			// TODO: Find a better method to ignore non-host certificates
-			if len(c.Subject.CommonName) > 0 &&
-				strings.Contains(c.Subject.CommonName, ".") &&
-				!strings.Contains(c.Subject.CommonName, ":") &&
-				!strings.Contains(c.Subject.CommonName, " ") {
-				names[strings.ToLower(c.Subject.CommonName)] = struct{}{}
-			}
-
-			for _, alt := range c.DNSNames {
-				if len(alt) > 0 {
-					names[strings.ToLower(alt)] = struct{}{}
-				}
-			}
-
-			// Write the names to the output channel
-			for n := range names {
-				o <- n
-			}
+		// Write the names to the output channel
+		for n := range names {
+			o <- n
 		}
 	}
 

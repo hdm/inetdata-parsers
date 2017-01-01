@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"strings"
 )
 
 var MTBLCompressionTypes = map[string]int{
@@ -96,4 +97,31 @@ func PublicSuffixMap() map[string]bool {
 		suffixes[Public_Suffixes[i]] = true
 	}
 	return suffixes
+}
+
+func PublicSuffixFind(name string) (string, error) {
+	if len(name) == 0 {
+		return "", fmt.Errorf("empty hostname")
+	}
+
+	// Exit early if obviously invalid input is received
+	if !strings.Contains(name, ".") ||
+		strings.Contains(name, " ") ||
+		strings.Contains(name, ":") {
+		return "", fmt.Errorf("invalid hostname")
+	}
+
+	for i := range Public_Suffixes {
+		suffix := "." + Public_Suffixes[i]
+
+		if len(suffix) > len(name) {
+			continue
+		}
+
+		sidx := len(name) - len(suffix)
+		if strings.Compare(name[sidx:], suffix) == 0 {
+			return Public_Suffixes[i], nil
+		}
+	}
+	return "", fmt.Errorf("domain not found")
 }
