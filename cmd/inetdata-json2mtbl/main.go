@@ -86,6 +86,7 @@ func main() {
 	}
 
 	if len(*kname) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: missing key name (-k) parameter\n")
 		usage()
 		os.Exit(1)
 	}

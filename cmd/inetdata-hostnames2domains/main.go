@@ -66,11 +66,6 @@ func inputParser(c <-chan string) {
 			continue
 		}
 
-		// Remove any wildcard prefixes from TLS certificates
-		for len(raw) > 3 && (raw[0:2] == "*." || raw[0:2] == "?.") {
-			raw = raw[2:]
-		}
-
 		// Remove leading dots from the name
 		for len(raw) > 2 && (raw[0:1] == ".") {
 			raw = raw[1:]
@@ -98,6 +93,11 @@ func inputParser(c <-chan string) {
 
 			// Skip public suffixes (.com.au, .com, etc)
 			if name == domain {
+				continue
+			}
+
+			// Skip any names containing obviously bad bytes, but keep processing the domain
+			if strings.IndexAny(name, "\x00\x09\x20\"'/?\\[]{}()=~!@#$%%^&<>`|:;\xFF") != -1 {
 				continue
 			}
 
