@@ -67,12 +67,19 @@ func inputParser(c <-chan string) {
 		}
 
 		// Remove any wildcard prefixes from TLS certificates
-		if len(raw) > 3 && raw[0:2] == "*." {
+		for len(raw) > 3 && (raw[0:2] == "*." || raw[0:2] == "?.") {
 			raw = raw[2:]
 		}
 
-		// Print the raw name
-		fmt.Println(raw)
+		// Remove leading dots from the name
+		for len(raw) > 2 && (raw[0:1] == ".") {
+			raw = raw[1:]
+		}
+
+		// Remove any trailing dots from the domain name
+		for len(raw) > 1 && raw[len(raw)-1:] == "." {
+			raw = raw[:len(raw)-1]
+		}
 
 		// Make sure it looks like a FQHN
 		bits := strings.SplitN(raw, ".", -1)
@@ -80,13 +87,11 @@ func inputParser(c <-chan string) {
 			continue
 		}
 
-		atomic.AddInt64(&input_count, 1)
-
 		// Lookup the public part of the domain name
 		domain, _ := publicsuffix.PublicSuffix(raw)
 
 		// Print each component of the FQHN
-		for i := 1; i < len(bits)-1; i++ {
+		for i := 0; i < len(bits)-1; i++ {
 			name := strings.Join(bits[i:], ".")
 
 			// Skip public suffixes (.com.au, .com, etc)

@@ -124,11 +124,23 @@ func inputParser(c <-chan string, o chan<- string) {
 		var names = make(map[string]struct{})
 
 		if _, err := publicsuffix.EffectiveTLDPlusOne(cert.Subject.CommonName); err == nil {
+			// Make sure the CN looks like an actual hostname
+			if strings.Contains(cert.Subject.CommonName, " ") ||
+				strings.Contains(cert.Subject.CommonName, ":") ||
+				inetdata.Match_IPv4.Match([]byte(cert.Subject.CommonName)) {
+				continue
+			}
 			names[strings.ToLower(cert.Subject.CommonName)] = struct{}{}
 		}
 
 		for _, alt := range cert.DNSNames {
 			if _, err := publicsuffix.EffectiveTLDPlusOne(alt); err == nil {
+				// Make sure the CN looks like an actual hostname
+				if strings.Contains(alt, " ") ||
+					strings.Contains(alt, ":") ||
+					inetdata.Match_IPv4.Match([]byte(alt)) {
+					continue
+				}
 				names[strings.ToLower(alt)] = struct{}{}
 			}
 		}
