@@ -90,6 +90,8 @@ func inputParser(c <-chan string) {
 		// Lookup the public part of the domain name
 		domain, _ := publicsuffix.PublicSuffix(raw)
 
+		atomic.AddInt64(&input_count, 1)
+
 		// Print each component of the FQHN
 		for i := 0; i < len(bits)-1; i++ {
 			name := strings.Join(bits[i:], ".")

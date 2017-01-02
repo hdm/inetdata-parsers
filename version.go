@@ -1,3 +1,3 @@
 package inetdata
 
-var Version string = "0.0.11"
+var Version string = "0.0.12"
