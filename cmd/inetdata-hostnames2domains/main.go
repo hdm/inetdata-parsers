@@ -66,8 +66,15 @@ func inputParser(c <-chan string) {
 			continue
 		}
 
+		// Remove any wildcard prefixes from TLS certificates
+		if len(raw) > 3 && raw[0:2] == "*." {
+			raw = raw[2:]
+		}
+
+		// Print the raw name
 		fmt.Println(raw)
 
+		// Make sure it looks like a FQHN
 		bits := strings.SplitN(raw, ".", -1)
 		if len(bits) < 2 {
 			continue
@@ -75,8 +82,10 @@ func inputParser(c <-chan string) {
 
 		atomic.AddInt64(&input_count, 1)
 
+		// Lookup the public part of the domain name
 		domain, _ := publicsuffix.PublicSuffix(raw)
 
+		// Print each component of the FQHN
 		for i := 1; i < len(bits)-1; i++ {
 			name := strings.Join(bits[i:], ".")
 
