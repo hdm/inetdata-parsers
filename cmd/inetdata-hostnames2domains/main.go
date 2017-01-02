@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/hdm/inetdata-parsers"
+	"golang.org/x/net/publicsuffix"
 	"os"
 	"regexp"
 	"runtime"
@@ -56,8 +57,6 @@ func showProgress(quit chan int) {
 
 func inputParser(c <-chan string) {
 
-	suffixes := inetdata.PublicSuffixMap()
-
 	digits := regexp.MustCompile(`^\d+\.`)
 
 	for r := range c {
@@ -67,6 +66,8 @@ func inputParser(c <-chan string) {
 			continue
 		}
 
+		fmt.Println(raw)
+
 		bits := strings.SplitN(raw, ".", -1)
 		if len(bits) < 2 {
 			continue
@@ -74,19 +75,17 @@ func inputParser(c <-chan string) {
 
 		atomic.AddInt64(&input_count, 1)
 
-		if len(bits) == 2 {
-			fmt.Println(raw)
-		}
+		domain, _ := publicsuffix.PublicSuffix(raw)
 
 		for i := 1; i < len(bits)-1; i++ {
 			name := strings.Join(bits[i:], ".")
 
-			// Skip domains that are public suffixes
-			if _, found := suffixes[name]; found {
+			// Skip public suffixes (.com.au, .com, etc)
+			if name == domain {
 				continue
 			}
 
-			// Skip domains that are entirely numerical
+			// Skip hostnames/subdomains that are entirely numerical
 			if digits.Match([]byte(name)) {
 				continue
 			}

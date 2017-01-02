@@ -8,6 +8,7 @@ import (
 	"github.com/google/certificate-transparency/go/tls"
 	"github.com/google/certificate-transparency/go/x509"
 	"github.com/hdm/inetdata-parsers"
+	"golang.org/x/net/publicsuffix"
 	"os"
 	"runtime"
 	"strings"
@@ -122,12 +123,12 @@ func inputParser(c <-chan string, o chan<- string) {
 
 		var names = make(map[string]struct{})
 
-		if _, err := inetdata.PublicSuffixFind(cert.Subject.CommonName); err == nil {
+		if _, err := publicsuffix.EffectiveTLDPlusOne(cert.Subject.CommonName); err == nil {
 			names[strings.ToLower(cert.Subject.CommonName)] = struct{}{}
 		}
 
 		for _, alt := range cert.DNSNames {
-			if _, err := inetdata.PublicSuffixFind(alt); err == nil {
+			if _, err := publicsuffix.EffectiveTLDPlusOne(alt); err == nil {
 				names[strings.ToLower(alt)] = struct{}{}
 			}
 		}
