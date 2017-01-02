@@ -272,7 +272,7 @@ func main() {
 	flag.Parse()
 
 	if *version {
-		inetdata.PrintVersion()
+		inetdata.PrintVersion("mq")
 		os.Exit(0)
 	}
 

@@ -19,8 +19,8 @@ var MTBLCompressionTypes = map[string]int{
 
 var Split_WS = regexp.MustCompile(`\s+`)
 
-func PrintVersion() {
-	fmt.Fprintf(os.Stderr, "v%s\n", Version)
+func PrintVersion(app string) {
+	fmt.Fprintf(os.Stderr, "%s v%s\n", app, Version)
 }
 
 func ReverseKey(s string) string {

@@ -165,7 +165,7 @@ func main() {
 	flag.Parse()
 
 	if *version {
-		inetdata.PrintVersion()
+		inetdata.PrintVersion("inetdata-ct2hostnames")
 		os.Exit(0)
 	}
 

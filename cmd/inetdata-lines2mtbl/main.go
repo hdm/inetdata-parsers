@@ -28,7 +28,6 @@ func showProgress(quit chan int) {
 	for {
 		select {
 		case <-quit:
-			fmt.Fprintf(os.Stderr, "[*] Complete\n")
 			return
 		case <-time.After(time.Second * 1):
 			elapsed := time.Since(start)
@@ -65,7 +64,7 @@ func main() {
 	flag.Parse()
 
 	if *version {
-		inetdata.PrintVersion()
+		inetdata.PrintVersion("inetdata-lines2mtbl")
 		os.Exit(0)
 	}
 

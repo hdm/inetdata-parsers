@@ -124,7 +124,7 @@ func main() {
 	flag.Parse()
 
 	if *version {
-		inetdata.PrintVersion()
+		inetdata.PrintVersion("inetdata-hostnames2domains")
 		os.Exit(0)
 	}
 

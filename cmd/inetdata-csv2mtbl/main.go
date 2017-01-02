@@ -45,7 +45,7 @@ func main() {
 	flag.Parse()
 
 	if *version {
-		inetdata.PrintVersion()
+		inetdata.PrintVersion("inetdata-csv2mtbl")
 		os.Exit(0)
 	}
 

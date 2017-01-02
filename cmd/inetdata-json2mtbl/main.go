@@ -76,7 +76,7 @@ func main() {
 	flag.Parse()
 
 	if *version {
-		inetdata.PrintVersion()
+		inetdata.PrintVersion("inetdata-json2mtbl")
 		os.Exit(0)
 	}
 
