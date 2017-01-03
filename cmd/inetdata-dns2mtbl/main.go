@@ -31,6 +31,7 @@ var compression_types = map[string]int{
 var merge_count int64 = 0
 var input_count int64 = 0
 var output_count int64 = 0
+var invalid_count int64 = 0
 
 type NewRecord struct {
 	Key []byte
@@ -58,6 +59,7 @@ func showProgress(quit chan int) {
 			icount := atomic.LoadInt64(&input_count)
 			ocount := atomic.LoadInt64(&output_count)
 			mcount := atomic.LoadInt64(&merge_count)
+			ecount := atomic.LoadInt64(&invalid_count)
 
 			if icount == 0 && ocount == 0 {
 				// Reset start, so that we show stats only from our first input
@@ -66,13 +68,13 @@ func showProgress(quit chan int) {
 			}
 			elapsed := time.Since(start)
 			if elapsed.Seconds() > 1.0 {
-				fmt.Fprintf(os.Stderr, "[*] [inetdata-dns2mtbl] Read %d and wrote %d records in %d seconds (%d/s in, %d/s out) (merged: %d)\n",
+				fmt.Fprintf(os.Stderr, "[*] [inetdata-dns2mtbl] Read %d and wrote %d records in %d seconds (%d/s in, %d/s out) (merged: %d, invalid: %d)\n",
 					icount,
 					ocount,
 					int(elapsed.Seconds()),
 					int(float64(icount)/elapsed.Seconds()),
 					int(float64(ocount)/elapsed.Seconds()),
-					mcount)
+					mcount, ecount)
 			}
 		}
 	}
@@ -148,7 +150,7 @@ func inputParser(d chan string, c chan NewRecord) {
 		bits := strings.SplitN(raw, ",", 2)
 
 		if len(bits) != 2 {
-			fmt.Fprintf(os.Stderr, "[-] Invalid line: %s\n", raw)
+			atomic.AddInt64(&invalid_count, 1)
 			continue
 		}
 
@@ -158,7 +160,7 @@ func inputParser(d chan string, c chan NewRecord) {
 		data := bits[1]
 
 		if len(name) == 0 || len(data) == 0 {
-			fmt.Fprintf(os.Stderr, "[-] Invalid line: %s\n", raw)
+			atomic.AddInt64(&invalid_count, 1)
 			continue
 		}
 		vals := strings.SplitN(data, "\x00", -1)
