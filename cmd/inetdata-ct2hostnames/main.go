@@ -19,6 +19,7 @@ import (
 
 var output_count int64 = 0
 var input_count int64 = 0
+var timestamps *bool
 
 var wi sync.WaitGroup
 var wo sync.WaitGroup
@@ -146,8 +147,14 @@ func inputParser(c <-chan string, o chan<- string) {
 		}
 
 		// Write the names to the output channel
-		for n := range names {
-			o <- n
+		if *timestamps {
+			for n := range names {
+				o <- fmt.Sprintf("%d\t%s", leaf.TimestampedEntry.Timestamp, n)
+			}
+		} else {
+			for n := range names {
+				o <- n
+			}
 		}
 	}
 
@@ -161,6 +168,7 @@ func main() {
 
 	flag.Usage = func() { usage() }
 	version := flag.Bool("version", false, "Show the version and build timestamp")
+	timestamps = flag.Bool("timestamps", false, "Prefix all extracted names with the CT entry timestamp")
 
 	flag.Parse()
 
