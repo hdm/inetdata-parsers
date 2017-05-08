@@ -37,7 +37,7 @@ func ReadLines(input *os.File, out chan<- string) error {
 	var (
 		backbufferSize  = 200000
 		frontbufferSize = 50000
-		r               = bufio.NewReaderSize(os.Stdin, frontbufferSize)
+		r               = bufio.NewReaderSize(input, frontbufferSize)
 		buf             []byte
 		pred            []byte
 		err             error
