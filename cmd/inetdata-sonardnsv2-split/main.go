@@ -291,7 +291,7 @@ func main() {
 			fmt.Sprintf("--buffer-size=%dG", *sort_mem))
 
 		sort2_stdout, ssoe := sort2_proc.StdoutPipe()
-		if soe != nil {
+		if ssoe != nil {
 			fmt.Fprintf(os.Stderr, "Error: failed to create sort stdout pipe: %s\n", ssoe)
 			os.Exit(1)
 		}
