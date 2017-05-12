@@ -307,17 +307,20 @@ func main() {
 
 	paths := findPaths(flag.Args())
 
+	exit_code := 0
+
 	for i := range paths {
 
 		path := paths[i]
 
 		r, e := mtbl.ReaderInit(path, &mtbl.ReaderOptions{VerifyChecksums: true})
-		defer r.Destroy()
-
 		if e != nil {
 			fmt.Fprintf(os.Stderr, "Error reading %s: %s\n", path, e)
-			os.Exit(1)
+			exit_code = 1
+			continue
 		}
+
+		defer r.Destroy()
 
 		if len(*domain) > 0 {
 			searchDomain(r, *domain)
@@ -342,4 +345,6 @@ func main() {
 
 		searchAll(r)
 	}
+
+	os.Exit(exit_code)
 }
