@@ -99,8 +99,9 @@ func showProgress(quit chan int) {
 }
 
 func scrubX509Value(bit string) string {
-	bit = strings.Replace(bit, "\x00", " ", -1)
-	bit = strings.Replace(bit, ",", " ", -1)
+	bit = strings.Replace(bit, "\x00", "[0x00]", -1)
+	bit = strings.Replace(bit, ",", "[0x2c]", -1)
+	bit = strings.Replace(bit, " ", "_", -1)
 	return bit
 }
 
@@ -211,7 +212,7 @@ func sortedCTParser(d chan string, c chan NewRecord) {
 		for r := range outm {
 			sorted_vals := outm[r]
 			sort.Strings(sorted_vals)
-			joined_vals := strings.Join(sorted_vals, "\t")
+			joined_vals := strings.Join(sorted_vals, " ")
 			outp = append(outp, []string{r, joined_vals})
 		}
 
