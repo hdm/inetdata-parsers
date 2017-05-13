@@ -100,7 +100,6 @@ func showProgress(quit chan int) {
 
 func scrubX509Value(bit string) string {
 	bit = strings.Replace(bit, "\x00", "[0x00]", -1)
-	bit = strings.Replace(bit, ",", "[0x2c]", -1)
 	bit = strings.Replace(bit, " ", "_", -1)
 	return bit
 }
