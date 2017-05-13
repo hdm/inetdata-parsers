@@ -337,6 +337,11 @@ func rawCTReader(c <-chan string, o chan<- string) {
 			o <- fmt.Sprintf("%s,ts,%d\n", n, leaf.TimestampedEntry.Timestamp)
 			o <- fmt.Sprintf("%s,cn,%s\n", n, scrubX509Value(cert.Subject.CommonName))
 			o <- fmt.Sprintf("%s,sha1,%s\n", n, sha1hash)
+
+			// Dump associated SANs (overkill, but saves a second lookup)
+			for _, extra := range cert.DNSNames {
+				o <- fmt.Sprintf("%s,dns,%s\n", n, extra)
+			}
 		}
 	}
 
