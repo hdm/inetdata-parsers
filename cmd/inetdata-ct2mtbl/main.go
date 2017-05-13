@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -284,10 +286,11 @@ func rawCTReader(c <-chan string, o chan<- string) {
 		var names = make(map[string]struct{})
 
 		if _, err := publicsuffix.EffectiveTLDPlusOne(cert.Subject.CommonName); err == nil {
-			// Make sure the CN looks like an actual hostname
-			if strings.Contains(cert.Subject.CommonName, " ") ||
-				strings.Contains(cert.Subject.CommonName, ":") ||
-				inetdata.Match_IPv4.Match([]byte(cert.Subject.CommonName)) {
+			// Make sure this looks like an actual hostname or IP address
+			if !(inetdata.Match_IPv4.Match([]byte(cert.Subject.CommonName)) ||
+				inetdata.Match_IPv6.Match([]byte(cert.Subject.CommonName))) &&
+				(strings.Contains(cert.Subject.CommonName, " ") ||
+					strings.Contains(cert.Subject.CommonName, ":")) {
 				continue
 			}
 			names[strings.ToLower(cert.Subject.CommonName)] = struct{}{}
@@ -295,19 +298,39 @@ func rawCTReader(c <-chan string, o chan<- string) {
 
 		for _, alt := range cert.DNSNames {
 			if _, err := publicsuffix.EffectiveTLDPlusOne(alt); err == nil {
-				// Make sure the CN looks like an actual hostname
-				if strings.Contains(alt, " ") ||
-					strings.Contains(alt, ":") ||
-					inetdata.Match_IPv4.Match([]byte(alt)) {
+				// Make sure this looks like an actual hostname or IP address
+				if !(inetdata.Match_IPv4.Match([]byte(cert.Subject.CommonName)) ||
+					inetdata.Match_IPv6.Match([]byte(cert.Subject.CommonName))) &&
+					(strings.Contains(alt, " ") ||
+						strings.Contains(alt, ":")) {
 					continue
 				}
 				names[strings.ToLower(alt)] = struct{}{}
 			}
 		}
 
+		sha1hash := ""
+
 		// Write the names to the output channel
 		for n := range names {
+			if len(sha1hash) == 0 {
+				sha1 := sha1.Sum(cert.Raw)
+				sha1hash = hex.EncodeToString(sha1[:])
+			}
+
+			// Dump associated email addresses if available
+			for _, extra := range cert.EmailAddresses {
+				o <- fmt.Sprintf("%s,email,%s\n", n, extra)
+			}
+
+			// Dump associated IP addresses if we have at least one name
+			for _, extra := range cert.IPAddresses {
+				o <- fmt.Sprintf("%s,ip,%s\n", n, extra)
+			}
+
 			o <- fmt.Sprintf("%s,ts,%d\n", n, leaf.TimestampedEntry.Timestamp)
+			o <- fmt.Sprintf("%s,cn,%s\n", n, cert.Subject.CommonName)
+			o <- fmt.Sprintf("%s,sha1,%s\n", n, sha1hash)
 		}
 	}
 
