@@ -98,6 +98,12 @@ func showProgress(quit chan int) {
 	}
 }
 
+func scrubX509Value(bit string) string {
+	bit = strings.Replace(bit, "\x00", " ", -1)
+	bit = strings.Replace(bit, ",", " ", -1)
+	return bit
+}
+
 func mergeFunc(key []byte, val0 []byte, val1 []byte) (mergedVal []byte) {
 
 	atomic.AddInt64(&merge_count, 1)
@@ -205,7 +211,7 @@ func sortedCTParser(d chan string, c chan NewRecord) {
 		for r := range outm {
 			sorted_vals := outm[r]
 			sort.Strings(sorted_vals)
-			joined_vals := strings.Join(sorted_vals, " ")
+			joined_vals := strings.Join(sorted_vals, "\t")
 			outp = append(outp, []string{r, joined_vals})
 		}
 
@@ -320,7 +326,7 @@ func rawCTReader(c <-chan string, o chan<- string) {
 
 			// Dump associated email addresses if available
 			for _, extra := range cert.EmailAddresses {
-				o <- fmt.Sprintf("%s,email,%s\n", n, extra)
+				o <- fmt.Sprintf("%s,email,%s\n", n, scrubX509Value(extra))
 			}
 
 			// Dump associated IP addresses if we have at least one name
@@ -329,7 +335,7 @@ func rawCTReader(c <-chan string, o chan<- string) {
 			}
 
 			o <- fmt.Sprintf("%s,ts,%d\n", n, leaf.TimestampedEntry.Timestamp)
-			o <- fmt.Sprintf("%s,cn,%s\n", n, cert.Subject.CommonName)
+			o <- fmt.Sprintf("%s,cn,%s\n", n, scrubX509Value(cert.Subject.CommonName))
 			o <- fmt.Sprintf("%s,sha1,%s\n", n, sha1hash)
 		}
 	}
