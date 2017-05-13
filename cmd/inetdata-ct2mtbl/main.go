@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -197,7 +198,16 @@ func sortedCTParser(d chan string, c chan NewRecord) {
 
 		}
 
-		json, e := json.Marshal(outm)
+		var outp [][]string
+
+		for r := range outm {
+			sorted_vals := outm[r]
+			sort.Strings(sorted_vals)
+			joined_vals := strings.Join(sorted_vals, " ")
+			outp = append(outp, []string{r, joined_vals})
+		}
+
+		json, e := json.Marshal(outp)
 		if e != nil {
 			fmt.Fprintf(os.Stderr, "[-] Could not marshal %v: %s\n", outm, e)
 			continue
@@ -321,6 +331,15 @@ func main() {
 	if *version {
 		inetdata.PrintVersion("inetdata-ct2mtbl")
 		os.Exit(0)
+	}
+
+	if len(*sort_tmp) == 0 {
+		*sort_tmp = os.Getenv("HOME")
+	}
+
+	if len(*sort_tmp) == 0 {
+		flag.Usage()
+		os.Exit(1)
 	}
 
 	// Configure the MTBL output
@@ -478,8 +497,8 @@ func main() {
 	quit := make(chan int)
 	go showProgress(quit)
 
-	// Input
-	c_ct_raw_input := make(chan string)
+	// Large channel buffer evens out spikey per-record processing time
+	c_ct_raw_input := make(chan string, 4096)
 
 	// Output
 	c_ct_parsed_output := make(chan string)
