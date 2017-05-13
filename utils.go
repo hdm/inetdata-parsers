@@ -33,6 +33,14 @@ func ReverseKey(s string) string {
 }
 
 func ReadLines(input *os.File, out chan<- string) error {
+	var (
+		frontbufferSize = 50000
+		r               = bufio.NewReaderSize(input, frontbufferSize)
+	)
+	return ReadLinesFromReader(r, out)
+}
+
+func ReadLinesFromReader(input io.Reader, out chan<- string) error {
 
 	var (
 		backbufferSize  = 200000
