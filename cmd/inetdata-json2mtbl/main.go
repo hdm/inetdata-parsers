@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/edmonds/golang-mtbl"
+	"github.com/hdm/golang-mtbl"
 	"github.com/hdm/inetdata-parsers"
 	"github.com/peterbourgon/mergemap"
 	"os"

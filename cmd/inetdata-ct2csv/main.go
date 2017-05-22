@@ -9,33 +9,18 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	"github.com/google/certificate-transparency-go/tls"
 	"github.com/google/certificate-transparency-go/x509"
-	"github.com/hdm/golang-mtbl"
 	"github.com/hdm/inetdata-parsers"
 	"golang.org/x/net/publicsuffix"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"runtime"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
-
-const MERGE_MODE_COMBINE = 0
-const MERGE_MODE_FIRST = 1
-const MERGE_MODE_LAST = 2
-
-var merge_mode = MERGE_MODE_COMBINE
-
-var compression_types = map[string]int{
-	"none":   mtbl.COMPRESSION_NONE,
-	"snappy": mtbl.COMPRESSION_SNAPPY,
-	"zlib":   mtbl.COMPRESSION_ZLIB,
-	"lz4":    mtbl.COMPRESSION_LZ4,
-	"lz4hc":  mtbl.COMPRESSION_LZ4HC,
-}
 
 var merge_count int64 = 0
 var output_count int64 = 0
@@ -53,15 +38,28 @@ type CTEntry struct {
 	ExtraData []byte `json:"extra_data"`
 }
 
+type ParsedCTEntry struct {
+	Sha1Hash   string   `json:"h"`
+	Timestamp  uint64   `json:"t"`
+	CommonName string   `json:"cn,omitempty"`
+	DNS        []string `json:"dns,omitempty"`
+	IP         []net.IP `json:"ip,omitempty"`
+	Email      []string `json:"email,omitempty"`
+}
+
+type ParsedCTEntryOutput struct {
+	Certs []ParsedCTEntry `json:"certs"`
+}
+
 type NewRecord struct {
 	Key []byte
 	Val []byte
 }
 
 func usage() {
-	fmt.Println("Usage: " + os.Args[0] + " [options] <output.mtbl>")
+	fmt.Println("Usage: " + os.Args[0] + " [options]")
 	fmt.Println("")
-	fmt.Println("Reads a CT log in JSONL format (one line per record) and emits a MTBL")
+	fmt.Println("Reads a CT log in JSONL format (one line per record) and emits a CSV")
 	fmt.Println("")
 	fmt.Println("Options:")
 	flag.PrintDefaults()
@@ -86,7 +84,7 @@ func showProgress(quit chan int) {
 			}
 			elapsed := time.Since(start)
 			if elapsed.Seconds() > 1.0 {
-				fmt.Fprintf(os.Stderr, "[*] [inetdata-ct2mtbl] Read %d and wrote %d records in %d seconds (%d/s in, %d/s out) (merged: %d, invalid: %d)\n",
+				fmt.Fprintf(os.Stderr, "[*] [inetdata-ct2csv] Read %d and wrote %d records in %d seconds (%d/s in, %d/s out) (merged: %d, invalid: %d)\n",
 					icount,
 					ocount,
 					int(elapsed.Seconds()),
@@ -104,66 +102,13 @@ func scrubX509Value(bit string) string {
 	return bit
 }
 
-func mergeFunc(key []byte, val0 []byte, val1 []byte) (mergedVal []byte) {
+func writeToOutput(c chan NewRecord, d chan bool) {
 
-	atomic.AddInt64(&merge_count, 1)
-
-	if merge_mode == MERGE_MODE_FIRST {
-		return val0
-	}
-
-	if merge_mode == MERGE_MODE_LAST {
-		return val1
-	}
-
-	// MERGE_MODE_COMBINE
-	var unique = make(map[string]bool)
-	var v0, v1, m [][]string
-
-	// fmt.Fprintf(os.Stderr, "MERGE[%v]     %v    ->    %v\n", string(key), string(val0), string(val1))
-
-	if e := json.Unmarshal(val0, &v0); e != nil {
-		return val1
-	}
-
-	if e := json.Unmarshal(val1, &v1); e != nil {
-		return val0
-	}
-
-	for i := range v0 {
-		if len(v0[i]) == 0 {
-			continue
-		}
-		unique[strings.Join(v0[i], "\x00")] = true
-	}
-
-	for i := range v1 {
-		if len(v1[i]) == 0 {
-			continue
-		}
-		unique[strings.Join(v1[i], "\x00")] = true
-	}
-
-	for i := range unique {
-		m = append(m, strings.SplitN(i, "\x00", 2))
-	}
-
-	d, e := json.Marshal(m)
-	if e != nil {
-		fmt.Fprintf(os.Stderr, "JSON merge error: %v -> %v + %v\n", e, val0, val1)
-		return val0
-	}
-
-	return d
-}
-
-func writeToMtbl(s *mtbl.Sorter, c chan NewRecord, d chan bool) {
 	for r := range c {
-		if e := s.Add(r.Key, r.Val); e != nil {
-			fmt.Fprintf(os.Stderr, "[-] Failed to add key=%v (%v): %v\n", r.Key, r.Val, e)
-		}
-		atomic.AddInt64(&output_count, 1)
+		fmt.Fprintf(os.Stdout, "%s\t%s\n", r.Key, r.Val)
 	}
+
+	// Signal that we are done
 	d <- true
 }
 
@@ -186,43 +131,28 @@ func sortedCTParser(d chan string, c chan NewRecord) {
 		}
 		vals := strings.SplitN(data, "\x00", -1)
 
-		outm := make(map[string][]string)
+		outm := ParsedCTEntryOutput{}
+
 		for i := range vals {
-			info := strings.SplitN(vals[i], ",", 2)
-			if len(info) < 2 {
+			info := ParsedCTEntry{}
+
+			if err := json.Unmarshal([]byte(vals[i]), &info); err != nil {
+				fmt.Fprintf(os.Stderr, "[-] Could not unmarshal %s: %s\n", vals[i], err)
 				continue
 			}
-
-			dkey := info[0]
-			dval := info[1]
-
-			cval, exists := outm[dkey]
-			if exists {
-				cval := append(cval, dval)
-				outm[dkey] = cval
-			} else {
-				outm[dkey] = []string{dval}
-			}
-
+			outm.Certs = append(outm.Certs, info)
 		}
 
-		var outp [][]string
-
-		for r := range outm {
-			sorted_vals := outm[r]
-			sort.Strings(sorted_vals)
-			joined_vals := strings.Join(sorted_vals, " ")
-			outp = append(outp, []string{r, joined_vals})
-		}
-
-		json, e := json.Marshal(outp)
+		json, e := json.Marshal(outm)
 		if e != nil {
 			fmt.Fprintf(os.Stderr, "[-] Could not marshal %v: %s\n", outm, e)
 			continue
 		}
 
-		// Reverse the key unless its an IP address
-		if !(inetdata.Match_IPv4.Match([]byte(name)) || inetdata.Match_IPv6.Match([]byte(name))) {
+		// Reverse the key unless its an IP address or SHA1 hash
+		if !(inetdata.Match_IPv4.Match([]byte(name)) ||
+			inetdata.Match_IPv6.Match([]byte(name)) ||
+			inetdata.Match_SHA1.Match([]byte(name))) {
 			name = inetdata.ReverseKey(name)
 		}
 
@@ -315,33 +245,47 @@ func rawCTReader(c <-chan string, o chan<- string) {
 			}
 		}
 
-		sha1hash := ""
+		for _, alt := range cert.IPAddresses {
+			names[fmt.Sprintf("%s", alt)] = struct{}{}
+		}
+
+		sha1 := sha1.Sum(cert.Raw)
+		sha1hash := hex.EncodeToString(sha1[:])
+		wrote_hash := false
 
 		// Write the names to the output channel
 		for n := range names {
-			if len(sha1hash) == 0 {
-				sha1 := sha1.Sum(cert.Raw)
-				sha1hash = hex.EncodeToString(sha1[:])
-			}
+
+			info := ParsedCTEntry{Sha1Hash: sha1hash, Timestamp: leaf.TimestampedEntry.Timestamp}
+			info.CommonName = scrubX509Value(cert.Subject.CommonName)
 
 			// Dump associated email addresses if available
 			for _, extra := range cert.EmailAddresses {
-				o <- fmt.Sprintf("%s,email,%s\n", n, scrubX509Value(extra))
+				info.Email = append(info.Email, scrubX509Value(extra))
 			}
 
 			// Dump associated IP addresses if we have at least one name
 			for _, extra := range cert.IPAddresses {
-				o <- fmt.Sprintf("%s,ip,%s\n", n, extra)
+				info.IP = append(info.IP, extra)
 			}
-
-			o <- fmt.Sprintf("%s,ts,%d\n", n, leaf.TimestampedEntry.Timestamp)
-			o <- fmt.Sprintf("%s,cn,%s\n", n, scrubX509Value(cert.Subject.CommonName))
-			o <- fmt.Sprintf("%s,sha1,%s\n", n, sha1hash)
 
 			// Dump associated SANs (overkill, but saves a second lookup)
 			for _, extra := range cert.DNSNames {
-				o <- fmt.Sprintf("%s,dns,%s\n", n, extra)
+				info.DNS = append(info.DNS, extra)
 			}
+
+			info_bytes, err := json.Marshal(info)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to marshal: %s %+v", n, info)
+				continue
+			}
+
+			if wrote_hash == false {
+				o <- fmt.Sprintf("%s,%s\n", sha1hash, info_bytes)
+				wrote_hash = true
+			}
+
+			o <- fmt.Sprintf("%s,%s\n", n, info_bytes)
 		}
 	}
 
@@ -354,16 +298,14 @@ func main() {
 	os.Setenv("LC_ALL", "C")
 
 	flag.Usage = func() { usage() }
-	compression := flag.String("c", "snappy", "The compression type to use (none, snappy, zlib, lz4, lz4hc)")
 	sort_tmp := flag.String("t", "", "The temporary directory to use for the sorting phase")
 	sort_mem := flag.Uint64("m", 1, "The maximum amount of memory to use, in gigabytes, for the sorting phases")
-	selected_merge_mode := flag.String("M", "combine", "The merge mode: combine, first, or last")
 	version := flag.Bool("version", false, "Show the version and build timestamp")
 
 	flag.Parse()
 
 	if *version {
-		inetdata.PrintVersion("inetdata-ct2mtbl")
+		inetdata.PrintVersion("inetdata-ct2csv")
 		os.Exit(0)
 	}
 
@@ -376,57 +318,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Configure the MTBL output
+	jsonl_writer_ch := make(chan NewRecord, 1)
+	jsonl_writer_done := make(chan bool, 1)
 
-	if len(flag.Args()) != 1 {
-		usage()
-		os.Exit(1)
-	}
-
-	switch *selected_merge_mode {
-	case "combine":
-		merge_mode = MERGE_MODE_COMBINE
-	case "first":
-		merge_mode = MERGE_MODE_FIRST
-	case "last":
-		merge_mode = MERGE_MODE_LAST
-	default:
-		fmt.Fprintf(os.Stderr, "Error: Invalid merge mode specified: %s\n", *selected_merge_mode)
-		usage()
-		os.Exit(1)
-	}
-
-	fname := flag.Args()[0]
-	_ = os.Remove(fname)
-
-	sort_opt := mtbl.SorterOptions{Merge: mergeFunc, MaxMemory: 1024 * 1024}
-	sort_opt.MaxMemory *= (*sort_mem * 1024)
-
-	if len(*sort_tmp) > 0 {
-		sort_opt.TempDir = *sort_tmp
-	}
-
-	compression_alg, ok := inetdata.MTBLCompressionTypes[*compression]
-	if !ok {
-		fmt.Fprintf(os.Stderr, "[-] Invalid compression algorithm: %s\n", *compression)
-		os.Exit(1)
-	}
-
-	mtbl_sorter := mtbl.SorterInit(&sort_opt)
-	mtbl_writer, w_e := mtbl.WriterInit(fname, &mtbl.WriterOptions{Compression: compression_alg})
-	if w_e != nil {
-		fmt.Fprintf(os.Stderr, "[-] Error: %s\n", w_e)
-		os.Exit(1)
-	}
-
-	defer mtbl_sorter.Destroy()
-	defer mtbl_writer.Destroy()
-
-	mtbl_sorter_ch := make(chan NewRecord, 1)
-	mtbl_sorter_done := make(chan bool, 1)
-
-	// Read from the mtbl_sorter_ch for NewRecords and write to the MTBL sorter
-	go writeToMtbl(mtbl_sorter, mtbl_sorter_ch, mtbl_sorter_done)
+	// Read from the jsonl_writer_ch for NewRecords and write to the CSV writer
+	go writeToOutput(jsonl_writer_ch, jsonl_writer_done)
 
 	// Create the sort and rollup pipeline
 	subprocs := []*exec.Cmd{}
@@ -511,10 +407,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Read rollup entries, convert to json, send to the MTBL writer
+	// Read rollup entries, convert to json, send to the CSV writer
 	c_ct_sorted_output := make(chan string)
 	wg_sorted_ct_parser.Add(1)
-	go sortedCTParser(c_ct_sorted_output, mtbl_sorter_ch)
+	go sortedCTParser(c_ct_sorted_output, jsonl_writer_ch)
 
 	wg_sort_reader.Add(1)
 	go func() {
@@ -576,14 +472,8 @@ func main() {
 	// Wait for the sortedCT processor
 	wg_sorted_ct_parser.Wait()
 
-	// Wait for the MTBL sorter to finish
-	<-mtbl_sorter_done
-
-	// Finalize the MTBL sorter with a write
-	if e = mtbl_sorter.Write(mtbl_writer); e != nil {
-		fmt.Fprintf(os.Stderr, "[-] Error writing MTBL: %s\n", e)
-		os.Exit(1)
-	}
+	// Wait for the json writer to finish
+	<-jsonl_writer_done
 
 	// Stop the progress monitor
 	quit <- 0
