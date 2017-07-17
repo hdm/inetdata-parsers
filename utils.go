@@ -3,7 +3,7 @@ package inetdata
 import (
 	"bufio"
 	"fmt"
-	"github.com/hdm/golang-mtbl"
+	"github.com/fathom6/golang-mtbl"
 	"io"
 	"os"
 	"regexp"
