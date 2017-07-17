@@ -7,7 +7,7 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	"github.com/google/certificate-transparency-go/tls"
 	"github.com/google/certificate-transparency-go/x509"
-	"github.com/hdm/inetdata-parsers"
+	"github.com/fathom6/inetdata-parsers"
 	"golang.org/x/net/publicsuffix"
 	"os"
 	"runtime"

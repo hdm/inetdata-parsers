@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/hdm/inetdata-parsers"
+	"github.com/fathom6/inetdata-parsers"
 	"os"
 	"runtime"
 	"strings"

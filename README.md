@@ -20,14 +20,14 @@ $ source ~/.bashrc
 
 Clone this repository into the correct path:
 ```
-$ mkdir -p $GOPATH/src/github.com/hdm/
-$ cd $GOPATH/src/github.com/hdm/
-$ git clone https://github.com/hdm/inetdata-parsers.git
+$ mkdir -p $GOPATH/src/github.com/fathom6/
+$ cd $GOPATH/src/github.com/fathom6/
+$ git clone https://github.com/fathom6/inetdata-parsers.git
 ```
 
 ### Install
 ```
-$ cd $GOPATH/src/github.com/hdm/inetdata-parsers/
+$ cd $GOPATH/src/github.com/fathom6/inetdata-parsers/
 $ make
 ```
 
