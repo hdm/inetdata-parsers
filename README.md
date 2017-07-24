@@ -1,6 +1,6 @@
 # Internet Data Processing Tools
 
-Process internet data from various sources
+Process internet data from various sources. Works with [inetdata](https://github.com/fathom6/inetdata)
 
 ## Dependencies
 
