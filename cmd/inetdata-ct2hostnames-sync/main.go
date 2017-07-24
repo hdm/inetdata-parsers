@@ -17,7 +17,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 var CTLogs = []string{
@@ -29,15 +28,19 @@ var CTLogs = []string{
 	"https://ct.googleapis.com/icarus",
 	"https://ct.googleapis.com/daedalus",
 	"https://ct1.digicert-ct.com/log",
+	"https://ct2.digicert-ct.com/log",
 	"https://ct.izenpe.eus",
 	"https://ct.ws.symantec.com",
 	"https://vega.ws.symantec.com",
+	"https://sirius.ws.symantec.com",
 	"https://ctlog.api.venafi.com",
 	"https://ctlog-gen2.api.venafi.com",
 	"https://ctlog.wosign.com",
 	"https://ctserver.cnnic.cn",
 	"https://ct.startssl.com",
 	"https://www.certificatetransparency.cn/ct",
+	"https://ct.gdca.com.cn",
+	"https://ctlog.gdca.com.cn",
 }
 
 var output_count int64 = 0
@@ -180,34 +183,6 @@ func downloadLog(log string, c_inp chan<- CTEntry) {
 	}
 }
 
-func showProgress(quit chan int) {
-	start := time.Now()
-	for {
-		select {
-		case <-quit:
-			return
-		case <-time.After(time.Second * 1):
-			icount := atomic.LoadInt64(&input_count)
-			ocount := atomic.LoadInt64(&output_count)
-
-			if icount == 0 && ocount == 0 {
-				// Reset start, so that we show stats only from our first input
-				start = time.Now()
-				continue
-			}
-			elapsed := time.Since(start)
-			if elapsed.Seconds() > 1.0 {
-				fmt.Fprintf(os.Stderr, "[*] [inetdata-ct2hostnames-sync] Read %d and wrote %d records in %d seconds (%d/s in, %d/s out)\n",
-					icount,
-					ocount,
-					int(elapsed.Seconds()),
-					int(float64(icount)/elapsed.Seconds()),
-					int(float64(ocount)/elapsed.Seconds()))
-			}
-		}
-	}
-}
-
 func outputWriter(o <-chan string) {
 	for name := range o {
 		fmt.Println(name)
@@ -326,10 +301,6 @@ func main() {
 		}
 	}
 
-	// Start the progress tracker
-	quit := make(chan int)
-	go showProgress(quit)
-
 	// Input
 	c_inp := make(chan CTEntry)
 
@@ -364,7 +335,4 @@ func main() {
 
 	// Wait for the output goroutine
 	wo.Wait()
-
-	// Stop the progress monitor
-	quit <- 0
 }

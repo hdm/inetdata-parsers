@@ -326,7 +326,7 @@ func rawCTReader(c <-chan string, o chan<- string) {
 
 			// Dump associated email addresses if available
 			for _, extra := range cert.EmailAddresses {
-				o <- fmt.Sprintf("%s,email,%s\n", n, scrubX509Value(extra))
+				o <- fmt.Sprintf("%s,email,%s\n", n, strings.ToLower(scrubX509Value(extra)))
 			}
 
 			// Dump associated IP addresses if we have at least one name
@@ -335,12 +335,12 @@ func rawCTReader(c <-chan string, o chan<- string) {
 			}
 
 			o <- fmt.Sprintf("%s,ts,%d\n", n, leaf.TimestampedEntry.Timestamp)
-			o <- fmt.Sprintf("%s,cn,%s\n", n, scrubX509Value(cert.Subject.CommonName))
+			o <- fmt.Sprintf("%s,cn,%s\n", n, strings.ToLower(scrubX509Value(cert.Subject.CommonName)))
 			o <- fmt.Sprintf("%s,sha1,%s\n", n, sha1hash)
 
 			// Dump associated SANs (overkill, but saves a second lookup)
 			for _, extra := range cert.DNSNames {
-				o <- fmt.Sprintf("%s,dns,%s\n", n, extra)
+				o <- fmt.Sprintf("%s,dns,%s\n", n, strings.ToLower(extra))
 			}
 		}
 	}
