@@ -4,9 +4,9 @@ Process internet data from various sources
 
 ## Dependencies
 
-### Ubuntu
+### Ubuntu 16.04
 ```
-$ sudo apt-get install build-essential git make pigz p7zip-full libmtbl-dev mtbl-bin
+$ sudo apt-get install build-essential git make pigz p7zip-full libmtbl-dev mtbl-bin pkg-config
 ```
 
 ### Golang
