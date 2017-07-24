@@ -6,14 +6,20 @@ Process internet data from various sources
 
 ### Ubuntu
 ```
-$ sudo apt-get install build-essential git make golang pigz p7zip-full libmtbl-dev mtbl-bin
+$ sudo apt-get install build-essential git make pigz p7zip-full libmtbl-dev mtbl-bin
 ```
+
+### Golang
+* Download the latest golang binary (1.8+) from https://golang.org/dl/
+* Extract to the filesystem with:
+``` # tar -C /usr/local -xzf go$VERSION.$OS-$ARCH.tar.gz```
 
 ### Build
 
 Configure your GO environment if you haven't done so, by adding the following to ~/.bashrc
 
 ```
+$ echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
 $ echo 'export GOPATH=$HOME' >> ~/.bashrc
 $ source ~/.bashrc
 ```
