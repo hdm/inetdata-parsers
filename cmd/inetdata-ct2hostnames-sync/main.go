@@ -1,13 +1,16 @@
 package main
 
 import (
+	"crypto/sha1"
+	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"github.com/fathom6/inetdata-parsers"
 	ct "github.com/google/certificate-transparency-go"
-	"github.com/google/certificate-transparency-go/tls"
+	ct_tls "github.com/google/certificate-transparency-go/tls"
 	"github.com/google/certificate-transparency-go/x509"
 	"golang.org/x/net/publicsuffix"
 	"io/ioutil"
@@ -17,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 var CTLogs = []string{
@@ -45,9 +49,7 @@ var CTLogs = []string{
 
 var output_count int64 = 0
 var input_count int64 = 0
-var timestamps *bool
-var storagedir *string
-var tail *int
+var number *int
 var follow *bool
 
 var wd sync.WaitGroup
@@ -84,7 +86,14 @@ func usage() {
 	flag.PrintDefaults()
 }
 
+func scrubX509Value(bit string) string {
+	bit = strings.Replace(bit, "\x00", "[0x00]", -1)
+	bit = strings.Replace(bit, " ", "_", -1)
+	return bit
+}
+
 func downloadJSON(url string) ([]byte, error) {
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return []byte{}, err
@@ -92,7 +101,12 @@ func downloadJSON(url string) ([]byte, error) {
 
 	req.Header.Set("Accept", "application/json")
 
-	client := &http.Client{}
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+
+	client := &http.Client{Transport: tr}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return []byte{}, err
@@ -148,44 +162,68 @@ func logNameToPath(name string) string {
 }
 
 func downloadLog(log string, c_inp chan<- CTEntry) {
+	var iteration int64 = 0
+	var current_index int64 = 0
+
 	defer wd.Done()
 
-	sth, sth_err := downloadSTH(log)
-	if sth_err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to download STH for %s: %s\n", log, sth_err)
-	}
+	for {
 
-	var start_index int64 = 0
-
-	if *tail > 0 {
-		start_index = sth.TreeSize - int64(*tail)
-		if start_index < 0 {
-			start_index = 0
-		}
-	}
-
-	var entry_count int64 = 1000
-
-	for index := start_index; index < sth.TreeSize; index += entry_count {
-		stop_index := index + entry_count - 1
-		if stop_index >= sth.TreeSize {
-			stop_index = sth.TreeSize - 1
+		if iteration > 0 {
+			fmt.Fprintf(os.Stderr, "[*] Sleeping for 10 seconds (%s) at index %d\n", log, current_index)
+			time.Sleep(time.Duration(10) * time.Second)
 		}
 
-		entries, err := downloadEntries(log, index, stop_index)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to download entries for %s: index %d -> %s\n", log, index, err)
-			return
+		sth, sth_err := downloadSTH(log)
+		if sth_err != nil {
+			fmt.Fprintf(os.Stderr, "[-] Failed to download STH for %s: %s\n", log, sth_err)
 		}
-		for entry_index := range entries.Entries {
-			c_inp <- entries.Entries[entry_index]
+
+		var start_index int64 = 0
+
+		if iteration == 0 {
+			start_index = sth.TreeSize - int64(*number)
+			if start_index < 0 {
+				start_index = 0
+			}
+			current_index = start_index
+		} else {
+			start_index = current_index
 		}
+
+		var entry_count int64 = 1000
+
+		for index := start_index; index < sth.TreeSize; index += entry_count {
+			stop_index := index + entry_count - 1
+			if stop_index >= sth.TreeSize {
+				stop_index = sth.TreeSize - 1
+			}
+
+			entries, err := downloadEntries(log, index, stop_index)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "[-] Failed to download entries for %s: index %d -> %s\n", log, index, err)
+				return
+			}
+			for entry_index := range entries.Entries {
+				c_inp <- entries.Entries[entry_index]
+			}
+		}
+
+		// Move our index to the end of the last tree
+		current_index = sth.TreeSize
+		iteration++
+
+		// Break after one loop unless we are in follow mode
+		if !*follow {
+			break
+		}
+
 	}
 }
 
 func outputWriter(o <-chan string) {
 	for name := range o {
-		fmt.Println(name)
+		fmt.Print(name)
 		atomic.AddInt64(&output_count, 1)
 	}
 	wo.Done()
@@ -197,11 +235,11 @@ func inputParser(c <-chan CTEntry, o chan<- string) {
 
 		var leaf ct.MerkleTreeLeaf
 
-		if rest, err := tls.Unmarshal(entry.LeafInput, &leaf); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to unmarshal MerkleTreeLeaf: %v (%v)", err, entry)
+		if rest, err := ct_tls.Unmarshal(entry.LeafInput, &leaf); err != nil {
+			fmt.Fprintf(os.Stderr, "[-] Failed to unmarshal MerkleTreeLeaf: %v (%v)", err, entry)
 			continue
 		} else if len(rest) > 0 {
-			fmt.Fprintf(os.Stderr, "Trailing data (%d bytes) after MerkleTreeLeaf: %q", len(rest), rest)
+			fmt.Fprintf(os.Stderr, "[-] Trailing data (%d bytes) after MerkleTreeLeaf: %q", len(rest), rest)
 			continue
 		}
 
@@ -213,7 +251,7 @@ func inputParser(c <-chan CTEntry, o chan<- string) {
 
 			cert, err = x509.ParseCertificate(leaf.TimestampedEntry.X509Entry.Data)
 			if err != nil && !strings.Contains(err.Error(), "NonFatalErrors:") {
-				fmt.Fprintf(os.Stderr, "Failed to parse cert: %s\n", err.Error())
+				fmt.Fprintf(os.Stderr, "[-] Failed to parse cert: %s\n", err.Error())
 				continue
 			}
 
@@ -221,12 +259,12 @@ func inputParser(c <-chan CTEntry, o chan<- string) {
 
 			cert, err = x509.ParseTBSCertificate(leaf.TimestampedEntry.PrecertEntry.TBSCertificate)
 			if err != nil && !strings.Contains(err.Error(), "NonFatalErrors:") {
-				fmt.Fprintf(os.Stderr, "Failed to parse precert: %s\n", err.Error())
+				fmt.Fprintf(os.Stderr, "[-] Failed to parse precert: %s\n", err.Error())
 				continue
 			}
 
 		default:
-			fmt.Fprintf(os.Stderr, "Unknown entry type: %v (%v)", leaf.TimestampedEntry.EntryType, entry)
+			fmt.Fprintf(os.Stderr, "[-] Unknown entry type: %v (%v)", leaf.TimestampedEntry.EntryType, entry)
 			continue
 		}
 
@@ -236,10 +274,11 @@ func inputParser(c <-chan CTEntry, o chan<- string) {
 		var names = make(map[string]struct{})
 
 		if _, err := publicsuffix.EffectiveTLDPlusOne(cert.Subject.CommonName); err == nil {
-			// Make sure the CN looks like an actual hostname
-			if strings.Contains(cert.Subject.CommonName, " ") ||
-				strings.Contains(cert.Subject.CommonName, ":") ||
-				inetdata.Match_IPv4.Match([]byte(cert.Subject.CommonName)) {
+			// Make sure this looks like an actual hostname or IP address
+			if !(inetdata.Match_IPv4.Match([]byte(cert.Subject.CommonName)) ||
+				inetdata.Match_IPv6.Match([]byte(cert.Subject.CommonName))) &&
+				(strings.Contains(cert.Subject.CommonName, " ") ||
+					strings.Contains(cert.Subject.CommonName, ":")) {
 				continue
 			}
 			names[strings.ToLower(cert.Subject.CommonName)] = struct{}{}
@@ -247,24 +286,43 @@ func inputParser(c <-chan CTEntry, o chan<- string) {
 
 		for _, alt := range cert.DNSNames {
 			if _, err := publicsuffix.EffectiveTLDPlusOne(alt); err == nil {
-				// Make sure the CN looks like an actual hostname
-				if strings.Contains(alt, " ") ||
-					strings.Contains(alt, ":") ||
-					inetdata.Match_IPv4.Match([]byte(alt)) {
+				// Make sure this looks like an actual hostname or IP address
+				if !(inetdata.Match_IPv4.Match([]byte(cert.Subject.CommonName)) ||
+					inetdata.Match_IPv6.Match([]byte(cert.Subject.CommonName))) &&
+					(strings.Contains(alt, " ") ||
+						strings.Contains(alt, ":")) {
 					continue
 				}
 				names[strings.ToLower(alt)] = struct{}{}
 			}
 		}
 
+		sha1hash := ""
+
 		// Write the names to the output channel
-		if *timestamps {
-			for n := range names {
-				o <- fmt.Sprintf("%d\t%s", leaf.TimestampedEntry.Timestamp, n)
+		for n := range names {
+			if len(sha1hash) == 0 {
+				sha1 := sha1.Sum(cert.Raw)
+				sha1hash = hex.EncodeToString(sha1[:])
 			}
-		} else {
-			for n := range names {
-				o <- n
+
+			// Dump associated email addresses if available
+			for _, extra := range cert.EmailAddresses {
+				o <- fmt.Sprintf("%s,email,%s\n", n, strings.ToLower(scrubX509Value(extra)))
+			}
+
+			// Dump associated IP addresses if we have at least one name
+			for _, extra := range cert.IPAddresses {
+				o <- fmt.Sprintf("%s,ip,%s\n", n, extra)
+			}
+
+			o <- fmt.Sprintf("%s,ts,%d\n", n, leaf.TimestampedEntry.Timestamp)
+			o <- fmt.Sprintf("%s,cn,%s\n", n, strings.ToLower(scrubX509Value(cert.Subject.CommonName)))
+			o <- fmt.Sprintf("%s,sha1,%s\n", n, sha1hash)
+
+			// Dump associated SANs
+			for _, extra := range cert.DNSNames {
+				o <- fmt.Sprintf("%s,dns,%s\n", strings.ToLower(extra), n)
 			}
 		}
 	}
@@ -279,16 +337,14 @@ func main() {
 
 	flag.Usage = func() { usage() }
 	version := flag.Bool("version", false, "Show the version and build timestamp")
-	timestamps = flag.Bool("timestamps", false, "Prefix all extracted names with the CT entry timestamp")
-	storagedir = flag.String("storage", os.Getenv("HOME")+"/.ct", "The filesystem path to use for storage")
 	logurl := flag.String("logurl", "", "Only read from the specified CT log url")
-	tail = flag.Int("tail", 0, "Only retrieve the specified number of entries per log (0 for all)")
-	follow = flag.Bool("follow", false, "Follow the head of the log")
+	number = flag.Int("n", 100, "The number of entries from the end to start from")
+	follow = flag.Bool("f", false, "Follow the tail of the CT log")
 
 	flag.Parse()
 
 	if *version {
-		inetdata.PrintVersion("inetdata-ct2hostnames-sync")
+		inetdata.PrintVersion("inetdata-ct-tail")
 		os.Exit(0)
 	}
 
