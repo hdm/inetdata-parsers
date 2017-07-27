@@ -38,6 +38,7 @@ $ cd $GOPATH/src/github.com/fathom6/inetdata-parsers/
 $ make
 
 Number of parallel builds: 3
+-->     linux/amd64: github.com/fathom6/inetdata-parsers/cmd/mapi
 -->     linux/amd64: github.com/fathom6/inetdata-parsers/cmd/mq
 -->     linux/amd64: github.com/fathom6/inetdata-parsers/cmd/inetdata-arin-xml2json
 -->     linux/amd64: github.com/fathom6/inetdata-parsers/cmd/inetdata-csvsplit
