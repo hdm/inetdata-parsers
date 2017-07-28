@@ -9,11 +9,11 @@ import (
         "os"
         "math"
         "net"
+        s "strings"
         "strings"
         "log"
         "runtime"
         "net/http"
-        "regexp"
         "path/filepath"
         "github.com/gorilla/mux"
 )
@@ -21,11 +21,6 @@ import (
 var prefix *string
 var domain *string
 var cidr *string
-
-func hasMTBLExt(fname string) bool {
-    match, _ := regexp.MatchString("\\.[Mm][Tt][Bb][Ll]$",  fname)
-    return match
-}
 
 func findPaths() []string {
         pathS, err := os.Getwd()
@@ -35,7 +30,7 @@ func findPaths() []string {
         var paths []string
 
         filepath.Walk(pathS, func(path string, f os.FileInfo, _ error) error {
-                if !f.IsDir() && hasMTBLExt(f.Name()) {
+                if !f.IsDir() && s.HasSuffix(f.Name(), ".mtbl") {
                         paths = append(paths, path)
                 }
                 return nil
@@ -163,8 +158,8 @@ func searchCIDR(w http.ResponseWriter, req *http.Request) {
         params := mux.Vars(req)
         ip := string(params["ip"])
         cidr := string(params["id"])
-
         cidr = ip + "/" + cidr
+
         // Parse CIDR into base address + mask
         ip2, net2, err := net.ParseCIDR(cidr)
         if err != nil {
@@ -224,7 +219,6 @@ func searchCIDR(w http.ResponseWriter, req *http.Request) {
                         return
                 }
 
-
                 // Handle any leftovers by looking up a full /24 and ignoring stuff outside our range
                 ip_prefix := strings.Join(strings.SplitN(inetdata.UInt_to_IPv4(cur_base), ".", 4)[0:3], ".") + "."
 
@@ -245,7 +239,6 @@ func searchCIDR(w http.ResponseWriter, req *http.Request) {
                 }
         }
 }
-
 
 func main() {
 
