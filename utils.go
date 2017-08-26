@@ -34,6 +34,15 @@ func ReverseKey(s string) string {
 	return string(b)
 }
 
+func ReverseKeyBytes(s []byte) []byte {
+	b := make([]byte, len(s))
+	var j int = len(s) - 1
+	for i := 0; i <= j; i++ {
+		b[j-i] = s[i]
+	}
+	return b
+}
+
 func ReadLines(input *os.File, out chan<- string) error {
 	var (
 		frontbufferSize = 50000
