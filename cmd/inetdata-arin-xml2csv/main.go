@@ -214,6 +214,8 @@ func processFile(name string) {
 	defer xmlFile.Close()
 
 	writer := csv.NewWriter(os.Stdout)
+	defer writer.Flush()
+
 	decoder := xml.NewDecoder(xmlFile)
 	var inElement string
 	for {
