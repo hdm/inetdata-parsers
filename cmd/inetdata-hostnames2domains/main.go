@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/fathom6/inetdata-parsers"
+	"github.com/hdm/inetdata-parsers"
 	"golang.org/x/net/publicsuffix"
 	"os"
 	"regexp"
