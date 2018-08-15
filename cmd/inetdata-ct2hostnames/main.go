@@ -128,7 +128,7 @@ func inputParser(c <-chan string, o chan<- string) {
 			// Make sure the CN looks like an actual hostname
 			if strings.Contains(cert.Subject.CommonName, " ") ||
 				strings.Contains(cert.Subject.CommonName, ":") ||
-				inetdata.Match_IPv4.Match([]byte(cert.Subject.CommonName)) {
+				inetdata.MatchIPv4.Match([]byte(cert.Subject.CommonName)) {
 				continue
 			}
 			names[strings.ToLower(cert.Subject.CommonName)] = struct{}{}
@@ -139,7 +139,7 @@ func inputParser(c <-chan string, o chan<- string) {
 				// Make sure the CN looks like an actual hostname
 				if strings.Contains(alt, " ") ||
 					strings.Contains(alt, ":") ||
-					inetdata.Match_IPv4.Match([]byte(alt)) {
+					inetdata.MatchIPv4.Match([]byte(alt)) {
 					continue
 				}
 				names[strings.ToLower(alt)] = struct{}{}

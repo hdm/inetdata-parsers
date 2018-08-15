@@ -93,12 +93,12 @@ func writeRecord(c_names chan string, name string, rtype string, value string) {
 		c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, value)
 
 	case "a":
-		if inetdata.Match_IPv4.Match([]byte(value)) {
+		if inetdata.MatchIPv4.Match([]byte(value)) {
 			c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, value)
 		}
 
 	case "aaaa":
-		if inetdata.Match_IPv6.Match([]byte(value)) {
+		if inetdata.MatchIPv6.Match([]byte(value)) {
 			c_names <- fmt.Sprintf("%s,%s,%s\n", name, rtype, value)
 		}
 	}
@@ -111,7 +111,7 @@ func normalizeName(name string) string {
 	}
 
 	// Leave IP addresses alone
-	if inetdata.Match_IPv4.Match([]byte(name)) || inetdata.Match_IPv6.Match([]byte(name)) {
+	if inetdata.MatchIPv4.Match([]byte(name)) || inetdata.MatchIPv6.Match([]byte(name)) {
 		return name
 	}
 

@@ -127,9 +127,9 @@ func inputParser(c chan string, c_names chan string, c_inverse chan string) {
 
 		if rec.Type == "ptr" {
 			// Determine the field type based on pattern
-			if inetdata.Match_IPv4.Match([]byte(rec.Name)) {
+			if inetdata.MatchIPv4.Match([]byte(rec.Name)) {
 				rec.Type = "a"
-			} else if inetdata.Match_IPv6.Match([]byte(rec.Name)) {
+			} else if inetdata.MatchIPv6.Match([]byte(rec.Name)) {
 				rec.Type = "aaaa"
 			}
 		}
@@ -139,7 +139,7 @@ func inputParser(c chan string, c_names chan string, c_inverse chan string) {
 		switch rec.Type {
 		case "a":
 			// Skip invalid IPv4 records (TODO: verify logic)
-			if !(inetdata.Match_IPv4.Match([]byte(rec.Value)) || inetdata.Match_IPv4.Match([]byte(rec.Name))) {
+			if !(inetdata.MatchIPv4.Match([]byte(rec.Value)) || inetdata.MatchIPv4.Match([]byte(rec.Name))) {
 				continue
 			}
 			c_names <- fmt.Sprintf("%s,%s,%s\n", rec.Name, rec.Type, rec.Value)
@@ -147,7 +147,7 @@ func inputParser(c chan string, c_names chan string, c_inverse chan string) {
 
 		case "aaaa":
 			// Skip invalid IPv6 records (TODO: verify logic)
-			if !(inetdata.Match_IPv6.Match([]byte(rec.Value)) || inetdata.Match_IPv6.Match([]byte(rec.Name))) {
+			if !(inetdata.MatchIPv6.Match([]byte(rec.Value)) || inetdata.MatchIPv6.Match([]byte(rec.Name))) {
 				continue
 			}
 			c_names <- fmt.Sprintf("%s,%s,%s\n", rec.Name, rec.Type, rec.Value)

@@ -187,7 +187,7 @@ func inputParser(d chan string, c chan NewRecord) {
 		}
 
 		// Reverse the key unless its an IP address
-		if !(inetdata.Match_IPv4.Match([]byte(name)) || inetdata.Match_IPv6.Match([]byte(name))) {
+		if !(inetdata.MatchIPv4.Match([]byte(name)) || inetdata.MatchIPv6.Match([]byte(name))) {
 			name = inetdata.ReverseKey(name)
 		}
 

@@ -222,7 +222,7 @@ func sortedCTParser(d chan string, c chan NewRecord) {
 		}
 
 		// Reverse the key unless its an IP address
-		if !(inetdata.Match_IPv4.Match([]byte(name)) || inetdata.Match_IPv6.Match([]byte(name))) {
+		if !(inetdata.MatchIPv4.Match([]byte(name)) || inetdata.MatchIPv6.Match([]byte(name))) {
 			name = inetdata.ReverseKey(name)
 		}
 
@@ -293,8 +293,8 @@ func rawCTReader(c <-chan string, o chan<- string) {
 
 		if _, err := publicsuffix.EffectiveTLDPlusOne(cert.Subject.CommonName); err == nil {
 			// Make sure this looks like an actual hostname or IP address
-			if !(inetdata.Match_IPv4.Match([]byte(cert.Subject.CommonName)) ||
-				inetdata.Match_IPv6.Match([]byte(cert.Subject.CommonName))) &&
+			if !(inetdata.MatchIPv4.Match([]byte(cert.Subject.CommonName)) ||
+				inetdata.MatchIPv6.Match([]byte(cert.Subject.CommonName))) &&
 				(strings.Contains(cert.Subject.CommonName, " ") ||
 					strings.Contains(cert.Subject.CommonName, ":")) {
 				continue
@@ -305,8 +305,8 @@ func rawCTReader(c <-chan string, o chan<- string) {
 		for _, alt := range cert.DNSNames {
 			if _, err := publicsuffix.EffectiveTLDPlusOne(alt); err == nil {
 				// Make sure this looks like an actual hostname or IP address
-				if !(inetdata.Match_IPv4.Match([]byte(cert.Subject.CommonName)) ||
-					inetdata.Match_IPv6.Match([]byte(cert.Subject.CommonName))) &&
+				if !(inetdata.MatchIPv4.Match([]byte(cert.Subject.CommonName)) ||
+					inetdata.MatchIPv6.Match([]byte(cert.Subject.CommonName))) &&
 					(strings.Contains(alt, " ") ||
 						strings.Contains(alt, ":")) {
 					continue
