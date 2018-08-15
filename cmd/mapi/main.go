@@ -186,7 +186,7 @@ func searchCIDR(w http.ResponseWriter, req *http.Request) {
 	net_size := uint32(math.Pow(2, float64(mask_total-mask_ones)))
 
 	cur_base := net_base
-	end_base := net_base + net_size
+	end_base := net_base + net_size - 1
 
 	var ndots uint32 = 3
 	var block_size uint32 = 256
@@ -210,13 +210,9 @@ func searchCIDR(w http.ResponseWriter, req *http.Request) {
 		}
 		defer r.Destroy()
 		// Iterate by block size
-		for ; end_base-cur_base >= block_size; cur_base += block_size {
+		for ; (end_base - cur_base + 1) >= block_size; cur_base += block_size {
 			ip_prefix := strings.Join(strings.SplitN(inetdata.UInt2IPv4(cur_base), ".", 4)[0:ndots], ".") + "."
 			cidrPrefixIPv4(r, ip_prefix, w)
-		}
-
-		if end_base-cur_base == 0 {
-			return
 		}
 
 		// Handle any leftovers by looking up a full /24 and ignoring stuff outside our range
