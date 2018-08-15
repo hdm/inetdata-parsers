@@ -1,19 +1,21 @@
 package main
 
-// Convert ARIN Bulk XML into JSONL output
+// Convert ARIN Bulk XML into CSV output
 
 import (
-	"encoding/json"
+	"encoding/csv"
 	"encoding/xml"
 	"flag"
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 )
 
 // ARIN POC Record
 
 type ARIN_POC_emails struct {
-	Email string `xml:"email,omitempty" json:"email,omitempty"`
+	Email []string `xml:"email,omitempty" json:"email,omitempty"`
 }
 
 type ARIN_POC_iso3166_1 struct {
@@ -44,11 +46,10 @@ type ARIN_POC_phone struct {
 }
 
 type ARIN_POC_phones struct {
-	Phone *ARIN_POC_phone `xml:"phone,omitempty" json:"phone,omitempty"`
+	Phone []*ARIN_POC_phone `xml:"phone,omitempty" json:"phone,omitempty"`
 }
 
 type ARIN_POC_poc struct {
-	ARIN_Type        string                  `xml:"arin,omitempty" json:"arin,omitempty"`
 	City             string                  `xml:"city,omitempty" json:"city,omitempty"`
 	Emails           *ARIN_POC_emails        `xml:"emails,omitempty" json:"emails,omitempty"`
 	FirstName        string                  `xml:"firstName,omitempty" json:"firstName,omitempty"`
@@ -89,7 +90,6 @@ type ARIN_ORG_line struct {
 }
 
 type ARIN_ORG_org struct {
-	ARIN_Type        string                  `xml:"arin,omitempty" json:"arin,omitempty"`
 	City             string                  `xml:"city,omitempty" json:"city,omitempty"`
 	Customer         string                  `xml:"customer,omitempty" json:"customer,omitempty"`
 	Handle           string                  `xml:"handle,omitempty" json:"handle,omitempty"`
@@ -121,7 +121,6 @@ type ARIN_ORG_streetAddress struct {
 // ARIN Network Record
 
 type ARIN_NET_net struct {
-	ARIN_Type        string              `xml:"arin,omitempty" json:"arin,omitempty"`
 	EndAddress       string              `xml:"endAddress,omitempty" json:"endAddress,omitempty"`
 	Handle           string              `xml:"handle,omitempty" json:"handle,omitempty"`
 	Name             string              `xml:"name,omitempty" json:"name,omitempty"`
@@ -147,13 +146,19 @@ type ARIN_NET_netBlocks struct {
 	NetBlock *ARIN_NET_netBlock `xml:"netBlock,omitempty" json:"netBlock,omitempty"`
 }
 
+type ARIN_NET_pocLink struct {
+	Description string `xml:"description,attr"  json:",omitempty"`
+	Function    string `xml:"function,attr"  json:",omitempty"`
+	Handle      string `xml:"handle,attr"  json:",omitempty"`
+}
+
 type ARIN_NET_pocLinks struct {
+	PocLink []*ARIN_NET_pocLink `xml:"pocLink,omitempty" json:"pocLink,omitempty"`
 }
 
 // ARIN ASN Record
 
 type ARIN_ASN_asn struct {
-	ARIN_Type        string             `xml:"arin,omitempty" json:"arin,omitempty"`
 	ARIN_ASN_comment *ARIN_ASN_comment  `xml:"comment,omitempty" json:"comment,omitempty"`
 	EndAsNumber      string             `xml:"endAsNumber,omitempty" json:"endAsNumber,omitempty"`
 	Handle           string             `xml:"handle,omitempty" json:"handle,omitempty"`
@@ -185,19 +190,19 @@ type ARIN_ASN_pocLinks struct {
 	PocLink []*ARIN_ASN_pocLink `xml:"pocLink,omitempty" json:"pocLink,omitempty"`
 }
 
-func processRecord(decoder *xml.Decoder, el *xml.StartElement, rtype string, value interface{}) {
-	decoder.DecodeElement(&value, el)
-	if value == nil {
-		fmt.Fprintf(os.Stderr, "Could not decode record type %s\n", rtype)
-		return
-	}
+func escapeBackslashes(s string) string {
+	return strings.Replace(s, "\\", "\\\\", -1)
+}
 
-	b, e := json.Marshal(value)
-	if e != nil {
-		fmt.Fprintf(os.Stderr, "Could not marshal type: %s\n", e.Error())
-		return
-	}
-	fmt.Println(string(b))
+func scrubHighAscii(s string) string {
+	re := regexp.MustCompile("[\u007f-\u00ff]")
+	return re.ReplaceAllString(s, "?")
+}
+
+func escapeCell(s string) string {
+	s = escapeBackslashes(s)
+	s = scrubHighAscii(s)
+	return s
 }
 
 func processFile(name string) {
@@ -208,6 +213,9 @@ func processFile(name string) {
 	}
 	defer xmlFile.Close()
 
+	writer := csv.NewWriter(os.Stdout)
+	defer writer.Flush()
+
 	decoder := xml.NewDecoder(xmlFile)
 	var inElement string
 	for {
@@ -215,18 +223,307 @@ func processFile(name string) {
 		if t == nil {
 			break
 		}
+
 		switch se := t.(type) {
 		case xml.StartElement:
 			inElement = se.Name.Local
 			switch inElement {
+
 			case "poc":
-				processRecord(decoder, &se, inElement, &ARIN_POC_poc{})
-			case "net":
-				processRecord(decoder, &se, inElement, &ARIN_NET_net{})
+				value := ARIN_POC_poc{}
+
+				decoder.DecodeElement(&value, &se)
+				if value.Handle == "" {
+					fmt.Fprintf(os.Stderr, "Could not decode record type %s\n", inElement)
+					continue
+				}
+
+				record := []string{
+					value.Handle,
+					"", // Email1 - 1
+					"", // Email2 - 2
+					"", // Email3 - 3
+					value.FirstName,
+					value.LastName,
+					value.IsRoleAccount,
+					"", // StreetAddress - 7
+					value.City,
+					value.Iso3166_2,
+					value.PostalCode,
+					value.Iso3166_1.Name,
+					value.Iso3166_1.Code2,
+					value.Iso3166_1.Code3,
+					value.Iso3166_1.E164,
+					"", // Phone1 - 13
+					"", // Phone2 - 14
+					"", // Phone3 - 15
+					value.RegistrationDate,
+					string(*value.UpdateDate),
+				}
+
+				if record[7] == "N" {
+					record[7] = "false"
+				} else {
+					record[7] = "true"
+				}
+
+				// Extract the email addresses
+				if value.Emails != nil && value.Emails.Email != nil {
+					for ei := range value.Emails.Email {
+						if ei > 2 {
+							break
+						}
+						record[1+ei] = value.Emails.Email[ei]
+					}
+				}
+
+				// Extract the street address
+				if value.StreetAddress != nil && value.StreetAddress.Line != nil {
+					address := ""
+					for ei := range value.StreetAddress.Line {
+						line := strings.Replace(value.StreetAddress.Line[ei].Text, "\t", " ", -1)
+						if address == "" {
+							address = line
+						} else {
+							address = address + "\t" + line
+						}
+					}
+					record[7] = address
+				}
+
+				// Extract the phone numbers
+				if value.Phones != nil && value.Phones.Phone != nil {
+					for ei := range value.Phones.Phone {
+						if value.Phones.Phone[ei] == nil {
+							break
+						}
+						if ei > 2 {
+							break
+						}
+						phone := value.Phones.Phone[ei]
+						record[13+ei] = phone.Number.PhoneNumber
+					}
+				}
+
+				// Sanitize the records
+				for i := range record {
+					record[i] = escapeCell(record[i])
+				}
+
+				// Output CSV
+				if err := writer.Write(record); err != nil {
+					fmt.Fprintf(os.Stderr, "Could not write CSV: %v\n", record)
+					continue
+				}
+
 			case "org":
-				processRecord(decoder, &se, inElement, &ARIN_ORG_org{})
+				value := ARIN_ORG_org{}
+
+				decoder.DecodeElement(&value, &se)
+				if value.Handle == "" {
+					fmt.Fprintf(os.Stderr, "Could not decode record type %s\n", inElement)
+					continue
+				}
+
+				record := []string{
+					value.Handle,
+					value.Name,
+					value.Customer,
+					"", // StreetAddress - 3
+					value.City,
+					value.Iso3166_2,
+					value.PostalCode,
+					value.Iso3166_1.Name,
+					value.Iso3166_1.Code2,
+					value.Iso3166_1.Code3,
+					value.Iso3166_1.E164,
+					"", // Admin POC - 11
+					"", // NOC POC
+					"", // Tech POC
+					"", // Abuse POC
+					value.RegistrationDate,
+					value.UpdateDate,
+				}
+
+				if record[7] == "N" {
+					record[7] = "false"
+				} else {
+					record[7] = "true"
+				}
+
+				// Extract the street address
+				if value.StreetAddress != nil && value.StreetAddress.Line != nil {
+					address := ""
+					for ei := range value.StreetAddress.Line {
+						line := strings.Replace(value.StreetAddress.Line[ei].Text, "\t", " ", -1)
+						if address == "" {
+							address = line
+						} else {
+							address = address + "\t" + line
+						}
+					}
+					record[3] = address
+				}
+
+				// Extract the POC handles
+				if value.PocLinks != nil && value.PocLinks.PocLink != nil {
+					for ei := range value.PocLinks.PocLink {
+						if value.PocLinks.PocLink[ei] == nil {
+							continue
+						}
+						poc := value.PocLinks.PocLink[ei]
+
+						switch poc.Description {
+						case "Admin":
+							record[11] = poc.Handle
+						case "NOC":
+							record[12] = poc.Handle
+						case "Tech":
+							record[13] = poc.Handle
+						case "Abuse":
+							record[14] = poc.Handle
+						}
+					}
+				}
+
+				// Sanitize the records
+				for i := range record {
+					record[i] = escapeCell(record[i])
+				}
+
+				// Output CSV
+				if err := writer.Write(record); err != nil {
+					fmt.Fprintf(os.Stderr, "Could not write CSV: %v\n", record)
+					continue
+				}
+
+			case "net":
+				value := ARIN_NET_net{}
+
+				decoder.DecodeElement(&value, &se)
+				if value.Handle == "" {
+					fmt.Fprintf(os.Stderr, "Could not decode record type %s\n", inElement)
+					continue
+				}
+
+				record := []string{
+					value.Handle,
+					value.ParentNetHandle,
+					value.OrgHandle,
+					value.Name,
+					value.StartAddress,
+					value.EndAddress,
+					"", // Admin POC - 6
+					"", // NOC POC
+					"", // Tech POC
+					"", // Abuse POC
+					value.RegistrationDate,
+					value.UpdateDate,
+					value.Version,
+				}
+
+				// Extract the POC handles
+				if value.PocLinks != nil && value.PocLinks.PocLink != nil {
+					for ei := range value.PocLinks.PocLink {
+						if value.PocLinks.PocLink[ei] == nil {
+							continue
+						}
+						poc := value.PocLinks.PocLink[ei]
+
+						switch poc.Description {
+						case "Admin":
+							record[6] = poc.Handle
+						case "NOC":
+							record[7] = poc.Handle
+						case "Tech":
+							record[8] = poc.Handle
+						case "Abuse":
+							record[9] = poc.Handle
+						}
+					}
+				}
+
+				// Sanitize the records
+				for i := range record {
+					record[i] = escapeCell(record[i])
+				}
+
+				// Output CSV
+				if err := writer.Write(record); err != nil {
+					fmt.Fprintf(os.Stderr, "Could not write CSV: %v\n", record)
+					continue
+				}
+
 			case "asn":
-				processRecord(decoder, &se, inElement, &ARIN_ASN_asn{})
+				value := ARIN_ASN_asn{}
+
+				decoder.DecodeElement(&value, &se)
+				if value.Handle == "" {
+					fmt.Fprintf(os.Stderr, "Could not decode record type %s\n", inElement)
+					continue
+				}
+
+				record := []string{
+					value.Handle,
+					value.OrgHandle,
+					value.Name,
+					value.StartAsNumber,
+					value.EndAsNumber,
+					"", // Admin POC - 5
+					"", // NOC POC
+					"", // Tech POC
+					"", // Abuse POC
+					"", // AS Comments - 9
+					value.RegistrationDate,
+					value.UpdateDate,
+				}
+
+				// Extract the POC handles
+				if value.PocLinks != nil && value.PocLinks.PocLink != nil {
+					for ei := range value.PocLinks.PocLink {
+						if value.PocLinks.PocLink[ei] == nil {
+							continue
+						}
+						poc := value.PocLinks.PocLink[ei]
+
+						switch poc.Description {
+						case "Admin":
+							record[5] = poc.Handle
+						case "NOC":
+							record[6] = poc.Handle
+						case "Tech":
+							record[7] = poc.Handle
+						case "Abuse":
+							record[8] = poc.Handle
+						}
+					}
+				}
+
+				// Extract the comments field
+				if value.ARIN_ASN_comment != nil && value.ARIN_ASN_comment.Line != nil {
+					comment := ""
+					for ei := range value.ARIN_ASN_comment.Line {
+						line := strings.Replace(value.ARIN_ASN_comment.Line[ei].Text, "\t", " ", -1)
+						if comment == "" {
+							comment = line
+						} else {
+							comment = comment + "\t" + line
+						}
+					}
+					record[9] = comment
+				}
+
+				// Sanitize the records
+				for i := range record {
+					record[i] = escapeCell(record[i])
+				}
+
+				// Output CSV
+				if err := writer.Write(record); err != nil {
+					fmt.Fprintf(os.Stderr, "Could not write CSV: %v\n", record)
+					continue
+				}
+
 			}
 		default:
 		}

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/fathom6/inetdata-parsers"
+	"github.com/hdm/inetdata-parsers"
 	"io"
 	"os"
 	"os/exec"

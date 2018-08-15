@@ -1,6 +1,6 @@
 # Internet Data Processing Tools
 
-Process internet data from various sources. Works with [inetdata](https://github.com/fathom6/inetdata)
+Process internet data from various sources. Works with [inetdata](https://github.com/hdm/inetdata)
 
 ## Dependencies
 
@@ -27,14 +27,14 @@ $ source ~/.bashrc
 
 Clone this repository into the correct path:
 ```
-$ mkdir -p $GOPATH/src/github.com/fathom6/
-$ cd $GOPATH/src/github.com/fathom6/
-$ git clone https://github.com/fathom6/inetdata-parsers.git
+$ mkdir -p $GOPATH/src/github.com/hdm/
+$ cd $GOPATH/src/github.com/hdm/
+$ git clone https://github.com/hdm/inetdata-parsers.git
 ```
 
 ### Install
 ```
-$ cd $GOPATH/src/github.com/fathom6/inetdata-parsers/
+$ cd $GOPATH/src/github.com/hdm/inetdata-parsers/
 $ make
 
 Number of parallel builds: 3
@@ -55,6 +55,7 @@ Number of parallel builds: 3
 -->     linux/amd64: github.com/fathom6/inetdata-parsers/cmd/inetdata-json2mtbl
 -->     linux/amd64: github.com/fathom6/inetdata-parsers/cmd/inetdata-sonardnsv2-split
 -->     linux/amd64: github.com/fathom6/inetdata-parsers/cmd/inetdata-zone2csv
+
 ```
 
 

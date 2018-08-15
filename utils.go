@@ -3,7 +3,7 @@ package inetdata
 import (
 	"bufio"
 	"fmt"
-	"github.com/fathom6/golang-mtbl"
+	"github.com/hdm/golang-mtbl"
 	"io"
 	"os"
 	"regexp"
@@ -32,6 +32,15 @@ func ReverseKey(s string) string {
 		b[j-i] = s[i]
 	}
 	return string(b)
+}
+
+func ReverseKeyBytes(s []byte) []byte {
+	b := make([]byte, len(s))
+	var j int = len(s) - 1
+	for i := 0; i <= j; i++ {
+		b[j-i] = s[i]
+	}
+	return b
 }
 
 func ReadLines(input *os.File, out chan<- string) error {
