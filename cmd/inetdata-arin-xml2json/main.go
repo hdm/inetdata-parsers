@@ -137,7 +137,7 @@ type ARIN_NET_net struct {
 }
 
 type ARIN_NET_netBlock struct {
-	CidrLenth    string `xml:"cidrLenth,omitempty" json:"cidrLenth,omitempty"`
+	CidrLength   string `xml:"cidrLength,omitempty" json:"cidrLength,omitempty"`
 	EndAddress   string `xml:"endAddress,omitempty" json:"endAddress,omitempty"`
 	StartAddress string `xml:"startAddress,omitempty" json:"startAddress,omitempty"`
 	Type         string `xml:"type,omitempty" json:"type,omitempty"`
