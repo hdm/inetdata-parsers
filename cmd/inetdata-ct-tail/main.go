@@ -8,43 +8,70 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	ct "github.com/google/certificate-transparency-go"
-	ct_tls "github.com/google/certificate-transparency-go/tls"
-	"github.com/google/certificate-transparency-go/x509"
-	"github.com/hdm/inetdata-parsers"
-	"golang.org/x/net/publicsuffix"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	ct "github.com/google/certificate-transparency-go"
+	ct_tls "github.com/google/certificate-transparency-go/tls"
+	"github.com/google/certificate-transparency-go/x509"
+	"golang.org/x/net/publicsuffix"
 )
 
+// MatchIPv6 is a regular expression for validating IPv6 addresses
+var MatchIPv6 = regexp.MustCompile(`^((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|((:[0-9A-Fa-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|((:[0-9A-Fa-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|((:[0-9A-Fa-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|((:[0-9A-Fa-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|((:[0-9A-Fa-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))(%.+)?$`)
+
+// MatchIPv4 is a regular expression for validating IPv4 addresses
+var MatchIPv4 = regexp.MustCompile(`^(?:(?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})[.](?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})[.](?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})[.](?:25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2}))$`)
+
 var CTLogs = []string{
-	"https://ct.googleapis.com/pilot",
-	"https://ct.googleapis.com/aviator",
-	"https://ct.googleapis.com/rocketeer",
-	"https://ct.googleapis.com/submariner",
-	"https://ct.googleapis.com/skydiver",
-	"https://ct.googleapis.com/icarus",
-	"https://ct.googleapis.com/daedalus",
-	"https://ct1.digicert-ct.com/log",
-	"https://ct2.digicert-ct.com/log",
-	"https://ct.izenpe.eus",
-	"https://ct.ws.symantec.com",
-	"https://vega.ws.symantec.com",
-	"https://sirius.ws.symantec.com",
-	"https://ctlog.api.venafi.com",
-	"https://ctlog-gen2.api.venafi.com",
-	"https://ctlog.wosign.com",
-	"https://ctserver.cnnic.cn",
-	"https://ct.startssl.com",
-	"https://www.certificatetransparency.cn/ct",
-	"https://ct.gdca.com.cn",
-	"https://ctlog.gdca.com.cn",
+	"https://ct.googleapis.com/logs/argon2019/",
+	"https://ct.googleapis.com/logs/argon2020/",
+	"https://ct.googleapis.com/logs/argon2021/",
+	"https://ct.googleapis.com/logs/xenon2019/",
+	"https://ct.googleapis.com/logs/xenon2020/",
+	"https://ct.googleapis.com/logs/xenon2021/",
+	"https://ct.googleapis.com/logs/xenon2022/",
+	"https://ct.googleapis.com/aviator/",
+	"https://ct.googleapis.com/icarus/",
+	"https://ct.googleapis.com/pilot/",
+	"https://ct.googleapis.com/rocketeer/",
+	"https://ct.googleapis.com/skydiver/",
+	"https://ct.cloudflare.com/logs/nimbus2019/",
+	"https://ct.cloudflare.com/logs/nimbus2020/",
+	"https://ct.cloudflare.com/logs/nimbus2021/",
+	"https://ct.cloudflare.com/logs/nimbus2022/",
+	"https://ct.cloudflare.com/logs/nimbus2023/",
+	"https://ct1.digicert-ct.com/log/",
+	"https://ct2.digicert-ct.com/log/",
+	"https://yeti2019.ct.digicert.com/log/",
+	"https://yeti2020.ct.digicert.com/log/",
+	"https://yeti2021.ct.digicert.com/log/",
+	"https://yeti2022.ct.digicert.com/log/",
+	"https://yeti2023.ct.digicert.com/log/",
+	"https://nessie2019.ct.digicert.com/log/",
+	"https://nessie2020.ct.digicert.com/log/",
+	"https://nessie2021.ct.digicert.com/log/",
+	"https://nessie2022.ct.digicert.com/log/",
+	"https://nessie2023.ct.digicert.com/log/",
+	"https://ct.ws.symantec.com/",
+	"https://vega.ws.symantec.com/",
+	"https://sirius.ws.symantec.com/",
+	"https://log.certly.io/",
+	"https://ct.izenpe.com/",
+	"https://ctlog.wosign.com/",
+	"https://ctlog.api.venafi.com/",
+	"https://ctlog-gen2.api.venafi.com/",
+	"https://ctserver.cnnic.cn/",
+	"https://ct.startssl.com/",
+	"https://sabre.ct.comodo.com/",
+	"https://mammoth.ct.comodo.com/",
 }
 
 var output_count int64 = 0
@@ -275,8 +302,8 @@ func inputParser(c <-chan CTEntry, o chan<- string) {
 
 		if _, err := publicsuffix.EffectiveTLDPlusOne(cert.Subject.CommonName); err == nil {
 			// Make sure this looks like an actual hostname or IP address
-			if !(inetdata.MatchIPv4.Match([]byte(cert.Subject.CommonName)) ||
-				inetdata.MatchIPv6.Match([]byte(cert.Subject.CommonName))) &&
+			if !(MatchIPv4.Match([]byte(cert.Subject.CommonName)) ||
+				MatchIPv6.Match([]byte(cert.Subject.CommonName))) &&
 				(strings.Contains(cert.Subject.CommonName, " ") ||
 					strings.Contains(cert.Subject.CommonName, ":")) {
 				continue
@@ -287,8 +314,8 @@ func inputParser(c <-chan CTEntry, o chan<- string) {
 		for _, alt := range cert.DNSNames {
 			if _, err := publicsuffix.EffectiveTLDPlusOne(alt); err == nil {
 				// Make sure this looks like an actual hostname or IP address
-				if !(inetdata.MatchIPv4.Match([]byte(cert.Subject.CommonName)) ||
-					inetdata.MatchIPv6.Match([]byte(cert.Subject.CommonName))) &&
+				if !(MatchIPv4.Match([]byte(cert.Subject.CommonName)) ||
+					MatchIPv6.Match([]byte(cert.Subject.CommonName))) &&
 					(strings.Contains(alt, " ") ||
 						strings.Contains(alt, ":")) {
 					continue
@@ -336,17 +363,11 @@ func main() {
 	os.Setenv("LC_ALL", "C")
 
 	flag.Usage = func() { usage() }
-	version := flag.Bool("version", false, "Show the version and build timestamp")
 	logurl := flag.String("logurl", "", "Only read from the specified CT log url")
 	number = flag.Int("n", 100, "The number of entries from the end to start from")
 	follow = flag.Bool("f", false, "Follow the tail of the CT log")
 
 	flag.Parse()
-
-	if *version {
-		inetdata.PrintVersion("inetdata-ct-tail")
-		os.Exit(0)
-	}
 
 	logs := []string{}
 	if len(*logurl) > 0 {
