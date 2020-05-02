@@ -138,10 +138,10 @@ func inputParser(c <-chan string, outc chan<- OutputKey) {
 
 		// Cleanup common scan artifacts, not comprehensive
 
-		// Ignore any records where key is empty or identical to the value (except NS)
+		// Ignore any records where key is empty or identical to the value (except NS or MX)
 		if len(val) >= len(key) {
 			parts := strings.SplitN(val, ",", 2)
-			if len(parts) == 2 && parts[0] != "ns" {
+			if len(parts) == 2 && parts[0] != "ns" && parts[0] != "mx" {
 				if len(parts[1]) == 0 || key == parts[1] {
 					continue
 				}
