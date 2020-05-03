@@ -153,7 +153,8 @@ func inputParser(c <-chan string, outc chan<- OutputKey) {
 
 		// Cleanup common scan artifacts, not comprehensive
 
-		// Ignore any records where key is empty or identical to the value (except NS or MX)
+		// Ignore any records where key is empty or identical to the value
+		// (with the exception of certain types)
 		if len(val) >= len(key) {
 			parts := strings.SplitN(val, ",", 2)
 			if len(parts) == 2 && !allowedIdentical(parts[0]) {
