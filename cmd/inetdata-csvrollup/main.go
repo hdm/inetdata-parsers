@@ -146,9 +146,9 @@ func inputParser(c <-chan string, outc chan<- OutputKey) {
 		if ckey != key {
 			if len(cval) != 0 {
 				outc <- OutputKey{Key: ckey, Vals: cval}
-				ckey = key
-				cval = []string{}
 			}
+			ckey = key
+			cval = []string{}
 		}
 
 		// Cleanup common scan artifacts, not comprehensive
