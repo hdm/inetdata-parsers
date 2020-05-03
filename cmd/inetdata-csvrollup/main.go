@@ -95,8 +95,10 @@ func mergeAndEmit(c chan OutputKey, o chan string) {
 	wg.Done()
 }
 
-func allowedIdentical(lookup string) bool {
-	switch lookup {
+// allowedIdentical checks to see if the record type is one of the few
+// DNS record types allowed to point to itself (name=value)
+func allowedIdentical(record_type string) bool {
+	switch record_type {
 	case
 		"ns",
 		"r-ns",
