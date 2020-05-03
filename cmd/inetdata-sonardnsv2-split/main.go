@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/hdm/inetdata-parsers"
 	"io"
 	"os"
 	"os/exec"
@@ -13,6 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/hdm/inetdata-parsers"
 )
 
 var output_count int64 = 0
@@ -115,8 +116,8 @@ func inputParser(c chan string, c_names chan string, c_inverse chan string) {
 			continue
 		}
 
-		// Skip any record that refers to itself
-		if rec.Value == rec.Name {
+		// Skip any record that refers to itself (except NS)
+		if rec.Value == rec.Name && rec.Type != "ns" {
 			continue
 		}
 
