@@ -3,13 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/hdm/inetdata-parsers"
 	"os"
 	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/hdm/inetdata-parsers"
 )
 
 var output_count int64 = 0
@@ -94,6 +95,20 @@ func mergeAndEmit(c chan OutputKey, o chan string) {
 	wg.Done()
 }
 
+// allowedIdentical checks to see if the record type is one of the few
+// DNS record types allowed to point to itself (name=value)
+func allowedIdentical(record_type string) bool {
+	switch record_type {
+	case
+		"ns",
+		"r-ns",
+		"mx",
+		"r-mx":
+		return true
+	}
+	return false
+}
+
 func inputParser(c <-chan string, outc chan<- OutputKey) {
 
 	// Track current key and value array
@@ -131,17 +146,20 @@ func inputParser(c <-chan string, outc chan<- OutputKey) {
 
 		// Next key hit
 		if ckey != key {
-			outc <- OutputKey{Key: ckey, Vals: cval}
+			if len(cval) != 0 {
+				outc <- OutputKey{Key: ckey, Vals: cval}
+			}
 			ckey = key
 			cval = []string{}
 		}
 
 		// Cleanup common scan artifacts, not comprehensive
 
-		// Ignore any records where key is empty or identical to the value (except NS)
+		// Ignore any records where key is empty or identical to the value
+		// (with the exception of certain types)
 		if len(val) >= len(key) {
 			parts := strings.SplitN(val, ",", 2)
-			if len(parts) == 2 && parts[0] != "ns" {
+			if len(parts) == 2 && !allowedIdentical(parts[0]) {
 				if len(parts[1]) == 0 || key == parts[1] {
 					continue
 				}
