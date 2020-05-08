@@ -4,11 +4,12 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"github.com/hdm/golang-mtbl"
-	"github.com/hdm/inetdata-parsers"
 	"os"
 	"runtime"
 	"strings"
+
+	mtbl "github.com/hdm/golang-mtbl"
+	"github.com/hdm/inetdata-parsers"
 )
 
 func usage() {
@@ -80,7 +81,15 @@ func main() {
 	}
 
 	scanner := bufio.NewScanner(os.Stdin)
+	// Tune Scanner's value for MaxScanTokenSize which defaults to 65,536
+	// Lines longer than MaxScanTokenSize will cause the Scanner to fail
+	// Set the intial buffsize to twice default (4096) since we're here
+	buf := make([]byte, 0, 8*1024)
+	scanner.Buffer(buf, 96*1024)
+
+	var current_line uint = 1
 	for scanner.Scan() {
+		current_line++
 		raw := strings.TrimSpace(scanner.Text())
 		if len(raw) == 0 {
 			continue
@@ -121,6 +130,11 @@ func main() {
 				fmt.Printf("Failed to add %v -> %v: %v\n", kstr, vstr, e)
 			}
 		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error while processing line %d : %s\n", current_line, err)
+		os.Exit(1)
 	}
 
 	if !*sort_skip {
