@@ -41,6 +41,7 @@ func main() {
 	sort_skip := flag.Bool("S", false, "Skip the sorting phase and assume keys are in pre-sorted order")
 	sort_tmp := flag.String("t", "", "The temporary directory to use for the sorting phase")
 	sort_mem := flag.Uint64("m", 1, "The maximum amount of memory to use, in gigabytes, for the sorting phase")
+
 	version := flag.Bool("version", false, "Show the version and build timestamp")
 
 	flag.Parse()
@@ -83,9 +84,9 @@ func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	// Tune Scanner's value for MaxScanTokenSize which defaults to 65,536
 	// Lines longer than MaxScanTokenSize will cause the Scanner to fail
-	// Set the intial buffsize to twice default (4096) since we're here
-	buf := make([]byte, 0, 8*1024)
-	scanner.Buffer(buf, 96*1024)
+	// Set the intial buffsize to twice the default
+	buf := make([]byte, 0, 128*1024)
+	scanner.Buffer(buf, len(buf)*2)
 
 	var current_line uint = 1
 	for scanner.Scan() {
