@@ -3,10 +3,11 @@ package inetdata
 import (
 	"bufio"
 	"fmt"
-	"github.com/hdm/golang-mtbl"
 	"io"
 	"os"
 	"regexp"
+
+	mtbl "github.com/hdm/golang-mtbl"
 )
 
 var Match_SHA1 = regexp.MustCompile(`^[a-zA-Z0-9]{40}$`)
@@ -18,6 +19,10 @@ var MTBLCompressionTypes = map[string]int{
 	"lz4":    mtbl.COMPRESSION_LZ4,
 	"lz4hc":  mtbl.COMPRESSION_LZ4HC,
 }
+
+const MTBL_KEY_LIMIT = 1024 * 1024 * 512
+
+const MTBL_VAL_LIMIT = 1024 * 1024 * 1024
 
 var Split_WS = regexp.MustCompile(`\s+`)
 

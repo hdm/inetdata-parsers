@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/hdm/golang-mtbl"
-	"github.com/hdm/inetdata-parsers"
-	"github.com/peterbourgon/mergemap"
 	"os"
 	"runtime"
+
+	mtbl "github.com/hdm/golang-mtbl"
+	"github.com/hdm/inetdata-parsers"
+	"github.com/peterbourgon/mergemap"
 )
 
 const MERGE_MODE_COMBINE = 0
@@ -158,8 +159,14 @@ func main() {
 			kstr = inetdata.ReverseKey(kstr)
 		}
 
+		if len(kstr) > inetdata.MTBL_KEY_LIMIT || len(raw) > inetdata.MTBL_VAL_LIMIT {
+			fmt.Printf("Failed to entry with long key or value\n")
+			continue
+		}
+
 		if e := s.Add([]byte(kstr), []byte(raw)); e != nil {
 			fmt.Printf("Failed to add %v -> %v: %v\n", kstr, raw, e)
+			continue
 		}
 
 	}

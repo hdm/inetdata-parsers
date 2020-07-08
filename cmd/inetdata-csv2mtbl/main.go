@@ -122,6 +122,11 @@ func main() {
 			kstr = inetdata.ReverseKey(kstr)
 		}
 
+		if len(kstr) > inetdata.MTBL_KEY_LIMIT || len(vstr) > inetdata.MTBL_VAL_LIMIT {
+			fmt.Printf("Failed to add entry with long key or value\n")
+			continue
+		}
+
 		if *sortSkip {
 			if e := w.Add([]byte(kstr), []byte(vstr)); e != nil {
 				fmt.Printf("Failed to add %v -> %v: %v\n", kstr, vstr, e)

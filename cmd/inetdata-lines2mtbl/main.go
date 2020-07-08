@@ -4,11 +4,12 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"github.com/hdm/golang-mtbl"
-	"github.com/hdm/inetdata-parsers"
 	"os"
 	"runtime"
 	"time"
+
+	mtbl "github.com/hdm/golang-mtbl"
+	"github.com/hdm/inetdata-parsers"
 )
 
 var merge_count int64 = 0
@@ -113,6 +114,11 @@ func main() {
 
 		if *reverse_key {
 			kstr = inetdata.ReverseKey(kstr)
+		}
+
+		if len(kstr) > inetdata.MTBL_KEY_LIMIT || len(vstr) > inetdata.MTBL_VAL_LIMIT {
+			fmt.Printf("Failed to entry with long key or value\n")
+			continue
 		}
 
 		if *sort_skip {

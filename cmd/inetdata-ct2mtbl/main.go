@@ -6,12 +6,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	ct "github.com/google/certificate-transparency-go"
-	"github.com/google/certificate-transparency-go/tls"
-	"github.com/google/certificate-transparency-go/x509"
-	"github.com/hdm/golang-mtbl"
-	"github.com/hdm/inetdata-parsers"
-	"golang.org/x/net/publicsuffix"
 	"io"
 	"os"
 	"os/exec"
@@ -21,6 +15,13 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	ct "github.com/google/certificate-transparency-go"
+	"github.com/google/certificate-transparency-go/tls"
+	"github.com/google/certificate-transparency-go/x509"
+	mtbl "github.com/hdm/golang-mtbl"
+	"github.com/hdm/inetdata-parsers"
+	"golang.org/x/net/publicsuffix"
 )
 
 const MERGE_MODE_COMBINE = 0
@@ -159,8 +160,17 @@ func mergeFunc(key []byte, val0 []byte, val1 []byte) (mergedVal []byte) {
 
 func writeToMtbl(s *mtbl.Sorter, c chan NewRecord, d chan bool) {
 	for r := range c {
+		if len(r.Key) > inetdata.MTBL_KEY_LIMIT {
+			fmt.Fprintf(os.Stderr, "[-] Failed to add key larger than %d: %s... (%d bytes)", inetdata.MTBL_KEY_LIMIT, string(r.Key[0:1024]), len(r.Key))
+			continue
+		}
+		if len(r.Val) > inetdata.MTBL_VAL_LIMIT {
+			fmt.Fprintf(os.Stderr, "[-] Failed to add value larger than %d for key %s: %s... (%d bytes)", inetdata.MTBL_VAL_LIMIT, string(r.Key), string(r.Val[0:1024]), len(r.Val))
+			continue
+		}
 		if e := s.Add(r.Key, r.Val); e != nil {
 			fmt.Fprintf(os.Stderr, "[-] Failed to add key=%v (%v): %v\n", r.Key, r.Val, e)
+			continue
 		}
 		atomic.AddInt64(&output_count, 1)
 	}
