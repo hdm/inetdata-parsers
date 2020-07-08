@@ -4,6 +4,8 @@ go 1.13
 
 replace github.com/coreos/bbolt v1.3.4 => go.etcd.io/bbolt v1.3.4
 
+replace github.com/coreos/bbolt v1.3.5 => go.etcd.io/bbolt v1.3.5
+
 require (
 	github.com/google/certificate-transparency-go v1.1.0
 	github.com/gorilla/mux v1.7.4
